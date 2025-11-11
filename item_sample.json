@@ -1,0 +1,79 @@
+{
+  "id": "1",
+  "type": "Weapon",
+  "name": "Short Sword",
+  "set": [
+    {
+      "name": "icon",
+      "val": "icon.weapon_small_sword_i00"
+    },
+    {
+      "name": "default_action",
+      "val": "EQUIP"
+    },
+    {
+      "name": "weapon_type",
+      "val": "SWORD"
+    },
+    {
+      "name": "bodypart",
+      "val": "rhand"
+    },
+    {
+      "name": "random_damage",
+      "val": "10"
+    },
+    {
+      "name": "attack_range",
+      "val": "40"
+    },
+    {
+      "name": "damage_range",
+      "val": "0;0;40;120"
+    },
+    {
+      "name": "immediate_effect",
+      "val": "true"
+    },
+    {
+      "name": "material",
+      "val": "STEEL"
+    },
+    {
+      "name": "weight",
+      "val": "1600"
+    },
+    {
+      "name": "price",
+      "val": "768"
+    },
+    {
+      "name": "soulshots",
+      "val": "1"
+    },
+    {
+      "name": "spiritshots",
+      "val": "1"
+    }
+  ],
+  "stats": {
+    "set": [
+      {
+        "stat": "pAtk",
+        "val": "8"
+      },
+      {
+        "stat": "mAtk",
+        "val": "6"
+      },
+      {
+        "stat": "critRate",
+        "val": "8"
+      },
+      {
+        "stat": "pAtkSpd",
+        "val": "379"
+      }
+    ]
+  }
+}

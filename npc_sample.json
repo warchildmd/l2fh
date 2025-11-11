@@ -1,0 +1,90 @@
+{
+  "id": "13034",
+  "level": "70",
+  "type": "Monster",
+  "name": "Super Huge Pig",
+  "race": "ANIMAL",
+  "sex": "MALE",
+  "stats": {
+    "str": "40",
+    "int": "21",
+    "dex": "30",
+    "wit": "20",
+    "con": "43",
+    "men": "10",
+    "vitals": {
+      "hp": "3400",
+      "hpRegen": "0",
+      "mp": "6000",
+      "mpRegen": "0.9"
+    },
+    "attack": {
+      "physical": "8.47458",
+      "magical": "5.78704",
+      "random": "7",
+      "critical": "8",
+      "accuracy": "-3.75",
+      "attackSpeed": "253",
+      "type": "BLUNT",
+      "range": "40",
+      "distance": "80",
+      "width": "120"
+    },
+    "defence": {
+      "physical": "60000",
+      "magical": "200000"
+    },
+    "speed": {
+      "walk": {
+        "ground": "60"
+      },
+      "run": {
+        "ground": "160"
+      }
+    }
+  },
+  "status": {
+    "undying": "false"
+  },
+  "exCrtEffect": "true",
+  "ai": {
+    "aggroRange": "300",
+    "clanHelpRange": "1000",
+    "isAggressive": "false",
+    "clanList": {
+      "clan": "PIG"
+    }
+  },
+  "dropLists": {
+    "drop": {
+      "group": [
+        {
+          "chance": "100",
+          "item": {
+            "id": "9142",
+            "min": "4",
+            "max": "6",
+            "chance": "100"
+          }
+        },
+        {
+          "chance": "50",
+          "item": {
+            "id": "9144",
+            "min": "1",
+            "max": "1",
+            "chance": "100"
+          }
+        }
+      ]
+    }
+  },
+  "collision": {
+    "radius": {
+      "normal": "29"
+    },
+    "height": {
+      "normal": "38.7"
+    }
+  }
+},
