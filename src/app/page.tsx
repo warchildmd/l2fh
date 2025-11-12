@@ -88,13 +88,15 @@ export default function Home() {
         const len = Number(res.headers.get('Content-Length') || '0');
         if (res.body && len > 0 && 'getReader' in res.body) {
           const reader = (res.body as ReadableStream).getReader();
-          const chunks: Uint8Array[] = [];
+          const chunks: BlobPart[] = [];
           let received = 0;
           while (true) {
             const {done, value} = await reader.read();
             if (done) break;
             if (value) {
-              chunks.push(value);
+              chunks.push(
+                value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength)
+              );
               received += value.length;
               if (!cancelled) setLoadPct(base + (received / len) * span * 0.7);
             }
@@ -371,7 +373,10 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
-                <Progress value={loadPct} label={`${loadPct < 100 ? 'Working' : 'Done'}`}/>
+                <Progress
+                  value={loadPct}
+                  aria-label={loadPct < 100 ? 'Loading data' : 'Completed loading'}
+                />
                 <div className="text-xs text-neutral-500">We are fetching NPCs and Items from CDN, parsing large JSON
                   files, and indexing. This may take a few seconds.
                 </div>
@@ -402,7 +407,11 @@ export default function Home() {
                     <div className="sm:col-span-2">
                       <Label>Shot</Label>
                       <div className="mt-2">
-                        <RadioGroup defaultValue="none" className={"grid-flow-col"} onValueChange={(e) => setShot(e)}>
+                        <RadioGroup
+                          defaultValue="none"
+                          className={"grid-flow-col"}
+                          onValueChange={(value: "none" | "ss" | "bss") => setShot(value)}
+                        >
                           <div className="flex items-center space-x-2">
                             <RadioGroupItem value="none" id="none"/>
                             <Label htmlFor="none">None</Label>
@@ -568,7 +577,11 @@ export default function Home() {
                   <div className="flex items-center justify-between">
                     <div className="text-sm font-semibold">Suggested NPCs</div>
                     <div className="flex items-center gap-3">
-                      <Checkbox id="herbs" checked={suggestedHerbs} onCheckedChange={(e) => setSuggestedHerbs(e)}/>
+                      <Checkbox
+                        id="herbs"
+                        checked={suggestedHerbs}
+                        onCheckedChange={(checked) => setSuggestedHerbs(checked === true)}
+                      />
                       <Label htmlFor="herbs">With herbs</Label>
                     </div>
                   </div>
