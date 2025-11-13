@@ -7,9 +7,10 @@ import {Card, CardContent, CardHeader} from "@/components/ui/card";
 import {Label} from "@/components/ui/label";
 import {Input} from "@/components/ui/input";
 import {Progress} from "@/components/ui/progress";
-import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
+// import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select"
 import {Checkbox} from "@/components/ui/checkbox";
+import {Skill} from './types'
 
 // Types
 type Npc = {
@@ -19,6 +20,7 @@ type Npc = {
   stats?: any;
   dropLists?: any;
   acquire?: any;
+  skillList?: any;
 };
 
 type Item = {
@@ -51,11 +53,12 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   // Inputs
-  const [matk, setMatk] = useState<number>(1000);
-  const [skillPower, setSkillPower] = useState<number>(100);
+  const [matk, setMatk] = useState<number>(140);
+  const [skillPower, setSkillPower] = useState<number>(26);
   const [shot, setShot] = useState<'none' | 'ss' | 'bss'>('none');
-  const [ssPrice, setSsPrice] = useState<number>(0);
-  const [bssPrice, setBssPrice] = useState<number>(0);
+  const [element, setElement] = useState<string>('none');
+  const [ssPrice, setSsPrice] = useState<number>(24);
+  const [bssPrice, setBssPrice] = useState<number>(52);
 
   // Selection
   const [query, setQuery] = useState('');
@@ -165,25 +168,84 @@ export default function Home() {
     return byName?.id || '57';
   }, [items]);
 
-  function dropHerbs(npc: Npc) {
-    const groupsRaw: any = npc.dropLists?.drop?.group ?? [];
-    const groups: any[] = Array.isArray(groupsRaw) ? groupsRaw : [groupsRaw];
-    for (const g of groups) {
-      if (Array.isArray(g?.item)) {
-        for (const i of g.item) {
-          const ni = parseInt(i.id);
-          if (ni >= 8600 && ni <= 8605) {
-            return true
-          }
-        }
-      } else {
-        const ni = parseInt(g.item.id);
-        if (ni >= 8600 && ni <= 8605) {
-          return true
-        }
-      }
+  function resolveSkills(npc: Npc): Skill[] {
+    const skills = npc.skillList?.skill;
+    if (!skills) return [];
+    return Array.isArray(skills) ? skills : [skills];
+  }
+
+  function adena(drops: any): number {
+    const item = drops.find((d: any) => d.itemId === adenaId)
+    if (!item) {
+      return 0;
     }
-    return false;
+    return (item.max + item.min) / 2.0 * item.pGroup * item.pItem
+  }
+
+  function herbs(drops: any): boolean {
+    return drops.some((d: any) => parseInt(d.itemId) >= 8600 && parseInt(d.itemId) <= 8605)
+  }
+
+  function mDefSkillMultiplier(skills: Skill[]): number {
+    const multipliers = [-0.15, -0.135, -0.12, -0.1, -0.08, -0.07, -0.06, -0.04, -0.03, -0.015, 0.0, 0.015, 0.03, 0.04, 0.06, 0.08, 0.1, 0.12, 0.135, 0.15, 0.165]
+    const item = skills.find((x) => toNum(x.id) === 4413)
+    if (!item) {
+      return 1.0;
+    } else {
+      return 1.0 + multipliers[toNum(item.level) - 1] * 10.0
+    }
+  }
+
+  function getHpMultiplier(skills: Skill[]): number {
+    const hpMultipliers = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
+    const item = skills.find((x) => toNum(x.id) === 4408)
+    if (!item) {
+      return 1.0;
+    } else {
+      return hpMultipliers[toNum(item.level) - 1]
+    }
+  }
+
+  function elementMultiplier(skills: Skill[]): number {
+    const holy = skills.find((x) => toNum(x.id) === 4275)
+    const fire = skills.find((x) => toNum(x.id) === 4279)
+    const water = skills.find((x) => toNum(x.id) === 4280)
+    const wind = skills.find((x) => toNum(x.id) === 4281)
+    const earth = skills.find((x) => toNum(x.id) === 4282)
+    const dark = skills.find((x) => toNum(x.id) === 4336)
+    return 0.0
+  }
+
+  function calculate(npc: Npc): any {
+    const drops = resolveDrops(npc);
+    const skills = resolveSkills(npc);
+    let  hpMultiplier = getHpMultiplier(skills);
+    if (hpMultiplier > 1.0) {
+      hpMultiplier = 1.0;
+    }
+
+    const dmgMultiplier = 1.0;
+
+    const exp = toNum(npc.acquire?.exp) * hpMultiplier;
+    const hp = toNum(npc.stats?.vitals?.hp);
+    const mdef = toNum(npc.stats?.defence?.magical) * mDefSkillMultiplier(skills);
+    const dmg = dmgMultiplier * 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
+    const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
+    const expPerHit = exp / hits;
+    const cAdena = adena(drops) * hpMultiplier;
+
+    return {
+      monster: npc,
+      hits: hits,
+      dmg: dmg,
+      mdef: mdef,
+      hp: hp,
+      exp: exp,
+      expPerHit: expPerHit,
+      herbs: herbs(drops),
+      adena: cAdena,
+      adenaPerHit: cAdena / hits
+    }
   }
 
   const suggestedMonsters = useMemo(() => {
@@ -192,30 +254,16 @@ export default function Home() {
     const results = []
     for (const npc of list) {
       if (toNum(npc.level) < suggestedMinLevel || toNum(npc.level) > suggestedMaxLevel) continue;
-      const exp = toNum(npc.acquire?.exp)
-      const hp = toNum(npc.stats?.vitals?.hp);
-      const mdef = toNum(npc.stats?.defence?.magical);
-      const dmg = 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
-      const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
-      const expPerHit = exp / hits;
-      if (hits <= suggestedMaxHits) {
-        // for these check suggestedHerbs
-        if (suggestedHerbs && !dropHerbs(npc)) {
-          continue;
-        }
-
-        results.push({
-          monster: npc,
-          hits: hits,
-          dmg: dmg,
-          mdef: mdef,
-          hp: hp,
-          exp: exp,
-          expPerHit: expPerHit,
-        })
-      }
+      const result = calculate(npc)
+      if (suggestedHerbs && !result.herbs) continue;
+      if (result.hits > suggestedMaxHits) continue;
+      results.push(result)
     }
-    results.sort((a, b) => b.expPerHit - a.expPerHit)
+    if (suggestedOptimisation === 'adena') {
+      results.sort((a, b) => b.adenaPerHit - a.adenaPerHit)
+    } else {
+      results.sort((a, b) => b.expPerHit - a.expPerHit)
+    }
     setSuggestedLoading(false);
     return results.slice(0, 32);
   }, [npcs, matk, skillPower, shot, suggestedMaxHits, suggestedOptimisation, suggestedHerbs, suggestedMinLevel, suggestedMaxLevel]);
@@ -226,12 +274,13 @@ export default function Home() {
 
   const currentStats = useMemo(() => {
     if (!selectedNpc) return null;
-    const hp = toNum(selectedNpc.stats?.vitals?.hp);
-    const mdef = toNum(selectedNpc.stats?.defence?.magical);
-    const dmg = 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
-    // Hits to kill per spec: ceil(Damage / Health)
-    const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
-    return {hp, mdef, dmg, hits};
+    // const hp = toNum(selectedNpc.stats?.vitals?.hp);
+    // const mdef = toNum(selectedNpc.stats?.defence?.magical);
+    // const dmg = 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
+    // // Hits to kill per spec: ceil(Damage / Health)
+    // const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
+    return calculate(selectedNpc);
+    // return {hp, mdef, dmg, hits};
   }, [selectedNpc, matk, skillPower, shot]);
 
   function resolveDrops(npc: Npc) {
@@ -404,36 +453,70 @@ export default function Home() {
                       <Input id="sp" type="number" value={skillPower}
                              onChange={(e) => setSkillPower(parseFloat(e.target.value || '0'))}/>
                     </div>
-                    <div className="sm:col-span-2">
+                    <div className="sm:col-span-1">
                       <Label>Shot</Label>
                       <div className="mt-2">
-                        <RadioGroup
+                        {/*<RadioGroup*/}
+                        {/*  defaultValue="none"*/}
+                        {/*  className={"grid-flow-col"}*/}
+                        {/*  onValueChange={(value: "none" | "ss" | "bss") => setShot(value)}*/}
+                        {/*>*/}
+                        {/*  <div className="flex items-center space-x-2">*/}
+                        {/*    <RadioGroupItem value="none" id="none"/>*/}
+                        {/*    <Label htmlFor="none">None</Label>*/}
+                        {/*  </div>*/}
+                        {/*  <div className="flex items-center space-x-2">*/}
+                        {/*    <RadioGroupItem value="ss" id="ss"/>*/}
+                        {/*    <Label htmlFor="ss">Spiritshots</Label>*/}
+                        {/*  </div>*/}
+                        {/*  <div className="flex items-center space-x-2">*/}
+                        {/*    <RadioGroupItem value="bss" id="bss"/>*/}
+                        {/*    <Label htmlFor="bss">Blessed spiritshots</Label>*/}
+                        {/*  </div>*/}
+                        {/*</RadioGroup>*/}
+                        <Select
                           defaultValue="none"
-                          className={"grid-flow-col"}
                           onValueChange={(value: "none" | "ss" | "bss") => setShot(value)}
                         >
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="none" id="none"/>
-                            <Label htmlFor="none">None</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="ss" id="ss"/>
-                            <Label htmlFor="ss">Spiritshots</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="bss" id="bss"/>
-                            <Label htmlFor="bss">Blessed spiritshots</Label>
-                          </div>
-                        </RadioGroup>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select shot type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            <SelectItem value="ss">Spiritshots</SelectItem>
+                            <SelectItem value="bss">Blessed spiritshots</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="sm:col-span-1">
+                      <Label>Element</Label>
+                      <div className="mt-2">
+                        <Select
+                          defaultValue="none"
+                          onValueChange={(value: string) => setElement(value)}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select magic element" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            <SelectItem value="fire">Fire</SelectItem>
+                            <SelectItem value="water">Water</SelectItem>
+                            <SelectItem value="dark">Dark</SelectItem>
+                            <SelectItem value="wind">Wind</SelectItem>
+                            <SelectItem value="holy">Holy</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                     <div className={"flex flex-col gap-2"}>
-                      <Label htmlFor="ssPrice">Spiritshot price</Label>
+                      <Label htmlFor="ssPrice">SS hit price</Label>
                       <Input id="ssPrice" type="number" value={ssPrice}
                              onChange={(e) => setSsPrice(parseFloat(e.target.value || '0'))}/>
                     </div>
                     <div className={"flex flex-col gap-2"}>
-                      <Label htmlFor="bssPrice">Blessed Spiritshot price</Label>
+                      <Label htmlFor="bssPrice">BSS hit price</Label>
                       <Input id="bssPrice" type="number" value={bssPrice}
                              onChange={(e) => setBssPrice(parseFloat(e.target.value || '0'))}/>
                     </div>
@@ -639,6 +722,12 @@ export default function Home() {
                               </div>
                             </div>
                             <div className="text-right">
+                              <div className="text-xs text-neutral-500">Adena/Hit</div>
+                              <div className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
+                                {m.adenaPerHit.toFixed(2)}
+                              </div>
+                            </div>
+                            <div className="text-right">
                               <div className="text-xs text-neutral-500">Exp/Hit</div>
                               <div className="text-sm font-medium text-indigo-600 dark:text-indigo-400">
                                 {m.expPerHit.toFixed(2)}
@@ -670,6 +759,10 @@ export default function Home() {
                             <div className="text-xs text-neutral-500">
                               Total Exp: <span
                               className="font-medium text-neutral-900 dark:text-neutral-100">{m.exp.toLocaleString()}</span>
+                            </div>
+                            <div className="text-xs text-neutral-500">
+                              Total Adena: <span
+                              className="font-medium text-neutral-900 dark:text-neutral-100">{m.adena.toFixed(0).toLocaleString()}</span>
                             </div>
                             <button
                               onClick={() => {
