@@ -213,12 +213,12 @@ export default function Home() {
     const wind = skills.find((x) => toNum(x.id) === 4281)
     const earth = skills.find((x) => toNum(x.id) === 4282)
     const dark = skills.find((x) => toNum(x.id) === 4336)
-    if (holy && element === 'holy') return 1.1;
-    if (fire && element === 'fire') return 1.1;
-    if (water && element === 'water') return 1.1;
-    if (wind && element === 'wind') return 1.1;
-    if (earth && element === 'earth') return 1.1;
-    if (dark && element === 'dark') return 1.1;
+    if (holy && element === 'holy') return 1.11;
+    if (fire && element === 'fire') return 1.11;
+    if (water && element === 'water') return 1.11;
+    if (wind && element === 'wind') return 1.11;
+    if (earth && element === 'earth') return 1.11;
+    if (dark && element === 'dark') return 1.11;
     return 1.0;
   }
 
