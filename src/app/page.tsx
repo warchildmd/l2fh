@@ -192,7 +192,7 @@ export default function Home() {
     if (!item) {
       return 1.0;
     } else {
-      return 1.0 + multipliers[toNum(item.level) - 1] * 10.0
+      return 1.0 + multipliers[toNum(item.level) - 1]
     }
   }
 
