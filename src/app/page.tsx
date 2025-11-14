@@ -187,7 +187,7 @@ export default function Home() {
   }
 
   function mDefSkillMultiplier(skills: Skill[]): number {
-    const multipliers = [-0.15, -0.135, -0.12, -0.1, -0.08, -0.07, -0.06, -0.04, -0.03, -0.015, 0.0, 0.015, 0.03, 0.04, 0.06, 0.08, 0.1, 0.12, 0.135, 0.15, 0.165]
+    const multipliers = [-0.15, -0.135, -0.12, -0.1, -0.08, -0.07, -0.06, -0.04, -0.03, -0.1, 0.0, 0.1, 0.03, 0.04, 0.06, 0.08, 0.1, 0.12, 0.135, 0.15, 0.165]
     const item = skills.find((x) => toNum(x.id) === 4413)
     if (!item) {
       return 1.0;
@@ -248,8 +248,8 @@ export default function Home() {
 
     const exp = toNum(npc.acquire?.exp) * hpMultiplier;
     const hp = toNum(npc.stats?.vitals?.hp);
-    const mdef = toNum(npc.stats?.defence?.magical) * mDefSkillMultiplier(skills);
-    const dmg = dmgMultiplier * 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
+    const mdef = Math.round(toNum(npc.stats?.defence?.magical) * mDefSkillMultiplier(skills));
+    const dmg = dmgMultiplier * 100.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
     const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
     const expPerHit = exp / hits;
     const cAdena = adena(drops) * hpMultiplier;
