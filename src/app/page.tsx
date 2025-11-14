@@ -213,7 +213,27 @@ export default function Home() {
     const wind = skills.find((x) => toNum(x.id) === 4281)
     const earth = skills.find((x) => toNum(x.id) === 4282)
     const dark = skills.find((x) => toNum(x.id) === 4336)
-    return 0.0
+    if (holy && element === 'holy') return 1.1;
+    if (fire && element === 'fire') return 1.1;
+    if (water && element === 'water') return 1.1;
+    if (wind && element === 'wind') return 1.1;
+    if (earth && element === 'earth') return 1.1;
+    if (dark && element === 'dark') return 1.1;
+    return 1.0;
+  }
+
+  function elementResist(skills: Skill[]): number {
+    const fire = skills.find((x) => toNum(x.id) === 4009)
+    const water = skills.find((x) => toNum(x.id) === 4010)
+    const wind = skills.find((x) => toNum(x.id) === 4011)
+    const earth = skills.find((x) => toNum(x.id) === 4012)
+    const dark = skills.find((x) => toNum(x.id) === 4333)
+    if (fire && element === 'fire') return 0.9;
+    if (water && element === 'water') return 0.9;
+    if (wind && element === 'wind') return 0.9;
+    if (earth && element === 'earth') return 0.9;
+    if (dark && element === 'dark') return 0.9;
+    return 1.0;
   }
 
   function calculate(npc: Npc): any {
@@ -224,7 +244,7 @@ export default function Home() {
       hpMultiplier = 1.0;
     }
 
-    const dmgMultiplier = 1.0;
+    const dmgMultiplier = elementMultiplier(skills) * elementResist(skills);
 
     const exp = toNum(npc.acquire?.exp) * hpMultiplier;
     const hp = toNum(npc.stats?.vitals?.hp);
@@ -281,7 +301,7 @@ export default function Home() {
     // const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
     return calculate(selectedNpc);
     // return {hp, mdef, dmg, hits};
-  }, [selectedNpc, matk, skillPower, shot]);
+  }, [selectedNpc, matk, skillPower, shot, element]);
 
   function resolveDrops(npc: Npc) {
     const groupsRaw: any = npc.dropLists?.drop?.group ?? [];
