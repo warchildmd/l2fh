@@ -1,7 +1,8 @@
 type Skill = {
+  id: string;
   skill_id: number;
   name: string;
-  levle: string;
+  level: string;
 }
 
 type MonsterSkill = {
