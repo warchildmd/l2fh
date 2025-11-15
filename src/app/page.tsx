@@ -249,7 +249,7 @@ export default function Home() {
     const exp = toNum(npc.acquire?.exp) * hpMultiplier;
     const hp = toNum(npc.stats?.vitals?.hp);
     const mdef = Math.round(toNum(npc.stats?.defence?.magical) * mDefSkillMultiplier(skills));
-    const dmg = dmgMultiplier * 100.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
+    const dmg = dmgMultiplier * 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / (Math.max(1, mdef) * 0.91);
     const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
     const expPerHit = exp / hits;
     const cAdena = adena(drops) * hpMultiplier;
