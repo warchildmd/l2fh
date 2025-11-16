@@ -1,39 +1,18 @@
-'use client';
-
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
-
-// shadcn/ui components
 import {Card, CardContent, CardHeader} from "@/components/ui/card";
+import {Progress} from "@/components/ui/progress";
 import {Label} from "@/components/ui/label";
 import {Input} from "@/components/ui/input";
-import {Progress} from "@/components/ui/progress";
-// import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
-import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue,} from "@/components/ui/select"
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import {Checkbox} from "@/components/ui/checkbox";
-import {Skill} from './types'
+import {useEffect, useRef, useState} from "react";
+import {Item, Monster, Skill, Location} from "@/app/types";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 
-// Types
-type Npc = {
-  id: string;
-  level?: string;
-  name: string;
-  stats?: any;
-  dropLists?: any;
-  acquire?: any;
-  skillList?: any;
-};
-
-type Item = {
-  id: string;
-  name: string;
-  type?: string;
-};
-
-function toNum(x: any, fallback = 0): number {
-  if (x == null) return fallback;
-  const n = typeof x === 'number' ? x : parseFloat(String(x).replace(/,/g, ''));
-  return Number.isFinite(n) ? n : fallback;
-}
 
 function useDebounced<T>(value: T, delay = 200): T {
   const [v, setV] = useState(value);
@@ -44,19 +23,23 @@ function useDebounced<T>(value: T, delay = 200): T {
   return v;
 }
 
-import Calculator from "./calculator";
+export default function Calculator() {
 
-export default function Page() {
-  return <Calculator />;
-}
-
-export function Home() {
-  const [npcs, setNpcs] = useState<Npc[] | null>(null);
-  const [items, setItems] = useState<Item[] | null>(null);
-  const [itemsById, setItemsById] = useState<Record<string, Item>>({});
   const [loadLabel, setLoadLabel] = useState('');
   const [loadPct, setLoadPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
+
+
+
+  // Databases
+  const [monsters, setMonsters] = useState<Monster[]>([]);
+  const [monstersById, setMonstersById] = useState<Record<number, Monster>>({});
+  const [items, setItems] = useState<Item[]>([]);
+  const [itemsById, setItemsById] = useState<Record<number, Item>>({});
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [locationsById, setLocationsById] = useState<Record<number, Location>>({});
+  const [skills, setSkills] = useState<Skill[]>([]);
+  const [skillsById, setSkillsById] = useState<Record<number, Skill>>({});
 
   // Inputs
   const [matk, setMatk] = useState<number>(140);
@@ -69,21 +52,24 @@ export function Home() {
   // Selection
   const [query, setQuery] = useState('');
   const debQuery = useDebounced(query, 150);
-  const [selectedNpc, setSelectedNpc] = useState<Npc | null>(null);
+  const [selectedNpc, setSelectedNpc] = useState<Monster | null>(null);
   const [openList, setOpenList] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Suggestion inputs
   const [suggestedMaxHits, setSuggestedMaxHits] = useState<number>(1);
   const [suggestedOptimisation, setSuggestedOptimisation] = useState<string>('exp');
-  const [suggestedLoading, setSuggestedLoading] = useState(false);
   const [suggestedHerbs, setSuggestedHerbs] = useState<boolean>(true);
   const [suggestedMinLevel, setSuggestedMinLevel] = useState<number>(1);
   const [suggestedMaxLevel, setSuggestedMaxLevel] = useState<number>(80);
 
+  const [suggestedLoading, setSuggestedLoading] = useState(false);
+
   // Active set
-  type ActiveEntry = { id: string; name: string; rate: number };
+  type ActiveEntry = { monster_id: string; rate: number };
   const [active, setActive] = useState<ActiveEntry[]>([]);
   const [totalMonsters, setTotalMonsters] = useState<number>(100);
+
 
   // Loader: staged with streaming if available
   useEffect(() => {
@@ -132,19 +118,37 @@ export function Home() {
         setError(null);
         setLoadPct(2);
         setLoadLabel('Initializing...');
-        const [npcsData, itemsData] = await Promise.all([
-          fetchWithProgress('/npcs.json', (s) => setLoadLabel(s), 2, 48),
-          fetchWithProgress('/items.json', (s) => setLoadLabel(s), 52, 46),
+        const [monstersData, itemsData, locationsData, skillsData] = await Promise.all([
+          fetchWithProgress('/c5/monsters_data.json', (s) => setLoadLabel(s), 2, 48),
+          fetchWithProgress('/c5/items_data.json', (s) => setLoadLabel(s), 52, 46),
+          fetchWithProgress('/c5/locations_data.json', (s) => setLoadLabel(s), 52, 46),
+          fetchWithProgress('/c5/skills_data.json', (s) => setLoadLabel(s), 52, 46),
         ]);
         if (cancelled) return;
         setLoadLabel('Indexing items...');
         const itemsList: Item[] = Array.isArray(itemsData) ? itemsData : Object.values(itemsData || {});
-        const npcsList: Npc[] = Array.isArray(npcsData) ? npcsData : Object.values(npcsData || {});
-        const map: Record<string, Item> = {};
-        for (const it of itemsList) map[String((it as any).id)] = it as Item;
+        const monstersList: Monster[] = Array.isArray(monstersData) ? monstersData : Object.values(monstersData || {});
+        const locationsList: Location[] = Array.isArray(locationsData) ? locationsData : Object.values(locationsData || {});
+        const skillsList: Skill[] = Array.isArray(skillsData) ? skillsData : Object.values(skillsData || {});
+
+        const itemMap: Record<number, Item> = {};
+        for (const it of itemsList) itemMap[it.item_id] = it as Item;
+        const monsterMap: Record<number, Monster> = {};
+        for (const it of monstersList) monsterMap[it.npc_id] = it as Monster;
+        const locationMap: Record<number, Location> = {};
+        for (const it of locationsList) locationMap[it.id] = it as Location;
+        const skillMap: Record<number, Skill> = {};
+        for (const it of skillsList) skillMap[it.skill_id] = it as Skill;
+
         setItems(itemsList);
-        setNpcs(npcsList);
-        setItemsById(map);
+        setMonsters(monstersList);
+        setLocations(locationsList);
+        setSkills(skillsList);
+
+        setItemsById(itemMap);
+        setMonstersById(monsterMap);
+        setLocationsById(locationMap);
+        setSkillsById(skillMap);
         setLoadPct(100);
         setLoadLabel('Ready');
       } catch (e: any) {
@@ -160,271 +164,6 @@ export function Home() {
     };
   }, []);
 
-  const filteredNpcs = useMemo(() => {
-    const list = npcs || [];
-    const q = debQuery.trim().toLowerCase();
-    if (!q) return list.slice(0, 50);
-    return list.filter((n) => n.name?.toLowerCase().includes(q)).slice(0, 50);
-  }, [npcs, debQuery]);
-
-  const adenaId = useMemo(() => {
-    // prefer id '57' or item named 'Adena'
-    if (!items) return '57';
-    const byName = items.find((it) => it.name?.toLowerCase() === 'adena');
-    return byName?.id || '57';
-  }, [items]);
-
-  function resolveSkills(npc: Npc): Skill[] {
-    const skills = npc.skillList?.skill;
-    if (!skills) return [];
-    return Array.isArray(skills) ? skills : [skills];
-  }
-
-  function adena(drops: any): number {
-    const item = drops.find((d: any) => d.itemId === adenaId)
-    if (!item) {
-      return 0;
-    }
-    return (item.max + item.min) / 2.0 * item.pGroup * item.pItem
-  }
-
-  function herbs(drops: any): boolean {
-    return drops.some((d: any) => parseInt(d.itemId) >= 8600 && parseInt(d.itemId) <= 8605)
-  }
-
-  function mDefSkillMultiplier(skills: Skill[]): number {
-    const multipliers = [-0.15, -0.135, -0.12, -0.1, -0.08, -0.07, -0.06, -0.04, -0.03, -0.1, 0.0, 0.1, 0.03, 0.04, 0.06, 0.08, 0.1, 0.12, 0.135, 0.15, 0.165]
-    const item = skills.find((x) => toNum(x.id) === 4413)
-    if (!item) {
-      return 1.0;
-    } else {
-      return 1.0 + multipliers[toNum(item.level) - 1]
-    }
-  }
-
-  function getHpMultiplier(skills: Skill[]): number {
-    const hpMultipliers = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.5, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0];
-    const item = skills.find((x) => toNum(x.id) === 4408)
-    if (!item) {
-      return 1.0;
-    } else {
-      return hpMultipliers[toNum(item.level) - 1]
-    }
-  }
-
-  function elementMultiplier(skills: Skill[]): number {
-    const holy = skills.find((x) => toNum(x.id) === 4275)
-    const fire = skills.find((x) => toNum(x.id) === 4279)
-    const water = skills.find((x) => toNum(x.id) === 4280)
-    const wind = skills.find((x) => toNum(x.id) === 4281)
-    const earth = skills.find((x) => toNum(x.id) === 4282)
-    const dark = skills.find((x) => toNum(x.id) === 4336)
-    if (holy && element === 'holy') return 1.11;
-    if (fire && element === 'fire') return 1.11;
-    if (water && element === 'water') return 1.11;
-    if (wind && element === 'wind') return 1.11;
-    if (earth && element === 'earth') return 1.11;
-    if (dark && element === 'dark') return 1.11;
-    return 1.0;
-  }
-
-  function elementResist(skills: Skill[]): number {
-    const fire = skills.find((x) => toNum(x.id) === 4009)
-    const water = skills.find((x) => toNum(x.id) === 4010)
-    const wind = skills.find((x) => toNum(x.id) === 4011)
-    const earth = skills.find((x) => toNum(x.id) === 4012)
-    const dark = skills.find((x) => toNum(x.id) === 4333)
-    if (fire && element === 'fire') return 0.9;
-    if (water && element === 'water') return 0.9;
-    if (wind && element === 'wind') return 0.9;
-    if (earth && element === 'earth') return 0.9;
-    if (dark && element === 'dark') return 0.9;
-    return 1.0;
-  }
-
-  function calculate(npc: Npc): any {
-    const drops = resolveDrops(npc);
-    const skills = resolveSkills(npc);
-    let  hpMultiplier = getHpMultiplier(skills);
-    if (hpMultiplier > 1.0) {
-      hpMultiplier = 1.0;
-    }
-
-    const dmgMultiplier = elementMultiplier(skills) * elementResist(skills);
-
-    const exp = toNum(npc.acquire?.exp) * hpMultiplier;
-    const hp = toNum(npc.stats?.vitals?.hp);
-    const mdef = Math.round(toNum(npc.stats?.defence?.magical) * mDefSkillMultiplier(skills));
-    const dmg = dmgMultiplier * 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / (Math.max(1, mdef) * 0.91);
-    const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
-    const expPerHit = exp / hits;
-    const cAdena = adena(drops) * hpMultiplier;
-
-    return {
-      monster: npc,
-      hits: hits,
-      dmg: dmg,
-      mdef: mdef,
-      hp: hp,
-      exp: exp,
-      expPerHit: expPerHit,
-      herbs: herbs(drops),
-      adena: cAdena,
-      adenaPerHit: cAdena / hits
-    }
-  }
-
-  const suggestedMonsters = useMemo(() => {
-    setSuggestedLoading(true);
-    const list = npcs || []
-    const results = []
-    for (const npc of list) {
-      if (toNum(npc.level) < suggestedMinLevel || toNum(npc.level) > suggestedMaxLevel) continue;
-      const result = calculate(npc)
-      if (suggestedHerbs && !result.herbs) continue;
-      if (result.hits > suggestedMaxHits) continue;
-      results.push(result)
-    }
-    if (suggestedOptimisation === 'adena') {
-      results.sort((a, b) => b.adenaPerHit - a.adenaPerHit)
-    } else {
-      results.sort((a, b) => b.expPerHit - a.expPerHit)
-    }
-    setSuggestedLoading(false);
-    return results.slice(0, 32);
-  }, [npcs, matk, skillPower, shot, suggestedMaxHits, suggestedOptimisation, suggestedHerbs, suggestedMinLevel, suggestedMaxLevel]);
-
-  function shotMultiplier(s: 'none' | 'ss' | 'bss') {
-    return s === 'none' ? 1 : s === 'ss' ? 2 : 4;
-  }
-
-  const currentStats = useMemo(() => {
-    if (!selectedNpc) return null;
-    // const hp = toNum(selectedNpc.stats?.vitals?.hp);
-    // const mdef = toNum(selectedNpc.stats?.defence?.magical);
-    // const dmg = 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
-    // // Hits to kill per spec: ceil(Damage / Health)
-    // const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
-    return calculate(selectedNpc);
-    // return {hp, mdef, dmg, hits};
-  }, [selectedNpc, matk, skillPower, shot, element]);
-
-  function resolveDrops(npc: Npc) {
-    const groupsRaw: any = npc.dropLists?.drop?.group ?? [];
-    const groups: any[] = Array.isArray(groupsRaw) ? groupsRaw : [groupsRaw].filter(Boolean);
-    type Resolved = { itemId: string; name: string; min: number; max: number; pGroup: number; pItem: number };
-    const resolved: Resolved[] = [];
-    for (const g of groups) {
-      const pG = toNum(g?.chance, 0) / 100;
-      const itRaw: any = g?.item ?? [];
-      const itemsList: any[] = Array.isArray(itRaw) ? itRaw : [itRaw].filter(Boolean);
-      for (const it of itemsList) {
-        const pI = toNum(it?.chance, 0) / 100;
-        const itemId = String(it?.id ?? '');
-        if (!itemId) continue;
-        const name = itemsById[itemId]?.name || `#${itemId}`;
-        // default min/max to 1 if absent to avoid zeroing expected qty on missing data
-        const min = toNum(it?.min, 1);
-        const max = toNum(it?.max, 1);
-        const effectiveChance = pG * pI;
-        if (effectiveChance <= 0) continue;
-        resolved.push({itemId, name, min, max, pGroup: pG, pItem: pI});
-      }
-    }
-    return resolved;
-  }
-
-  const selectedDrops = useMemo(() => (selectedNpc ? resolveDrops(selectedNpc) : []), [selectedNpc, itemsById]);
-
-  const hitsPerKill = currentStats?.hits || 0;
-  const perKillShotCost = useMemo(() => {
-    if (shot === 'none') return 0;
-    const price = shot === 'ss' ? ssPrice : bssPrice;
-    return hitsPerKill * price; // 1 shot per hit assumption
-  }, [shot, ssPrice, bssPrice, hitsPerKill]);
-
-  // Active set aggregations
-  const count = active.length;
-  const totalRate = active.reduce((a, b) => a + b.rate, 0);
-
-  const setAggregates = useMemo(() => {
-    if (!npcs) return null;
-    const byId: Record<string, Npc> = {};
-    for (const n of npcs) byId[n.id] = n;
-
-    let adenaPerKill = 0;
-    const itemExpectedPerKill: Record<string, { name: string; expectedQty: number }> = {};
-    let shotCostPerKill = 0;
-
-    for (const entry of active) {
-      const npc = byId[entry.id];
-      if (!npc) continue;
-      const weight = entry.rate / 100;
-      // shots cost per "one kill of this npc" weighted
-      const hp = toNum(npc.stats?.vitals?.hp);
-      const mdef = toNum(npc.stats?.defence?.magical);
-      const dmg = 91.0 * Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) * Math.max(0, skillPower) / Math.max(1, mdef);
-      const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : 0; // per spec
-      const price = shot === 'none' ? 0 : shot === 'ss' ? ssPrice : bssPrice;
-      shotCostPerKill += weight * hits * price;
-
-      const drops = resolveDrops(npc);
-      for (const d of drops) {
-        const avgQty = (d.min + d.max) / 2;
-        const expected = d.pGroup * d.pItem * avgQty; // expected qty per kill
-        const key = d.itemId;
-        const name = itemsById[key]?.name || d.name;
-        if (!itemExpectedPerKill[key]) itemExpectedPerKill[key] = {name, expectedQty: 0};
-        itemExpectedPerKill[key].expectedQty += expected * weight;
-      }
-    }
-    // Adena
-    adenaPerKill = itemExpectedPerKill[adenaId]?.expectedQty || 0; // in units of adena
-
-    // compute item list excluding adena
-    const entries = Object.entries(itemExpectedPerKill)
-      .filter(([id]) => id !== adenaId)
-      .map(([id, v]) => ({id, name: v.name, expectedQty: v.expectedQty}));
-    const totalExpectedNonAdenaPerKill = entries.reduce((a, b) => a + b.expectedQty, 0) || 1;
-    const itemsList = entries
-      .sort((a, b) => b.expectedQty - a.expectedQty)
-      .map((e) => ({
-        id: e.id,
-        name: e.name,
-        percent: (e.expectedQty / totalExpectedNonAdenaPerKill) * 100,
-        qtyPerKill: e.expectedQty,
-        qtyForSet: e.expectedQty * Math.max(0, totalMonsters)
-      }));
-
-    const grossAdenaForSet = adenaPerKill * Math.max(0, totalMonsters);
-    const shotCostForSet = shotCostPerKill * Math.max(0, totalMonsters);
-    const netAdenaPerKill = adenaPerKill - shotCostPerKill;
-    const netAdenaForSet = netAdenaPerKill * Math.max(0, totalMonsters);
-
-    return {
-      adenaPerKill,
-      grossAdenaForSet,
-      shotCostPerKill,
-      shotCostForSet,
-      netAdenaPerKill,
-      netAdenaForSet,
-      itemsList
-    };
-  }, [active, npcs, itemsById, adenaId, matk, skillPower, shot, ssPrice, bssPrice, totalMonsters]);
-
-  const addSelectedToSet = useCallback(() => {
-    if (!selectedNpc) return;
-    setActive((prev) => {
-      if (prev.some((p) => p.id === selectedNpc.id)) return prev;
-      const remain = Math.max(0, 100 - prev.reduce((a, b) => a + b.rate, 0));
-      return [...prev, {id: selectedNpc.id, name: selectedNpc.name, rate: remain}];
-    });
-  }, [selectedNpc]);
-
-  const updateRate = (id: string, rate: number) => {
-    setActive((prev) => prev.map((p) => (p.id === id ? {...p, rate: Math.max(0, Math.min(100, rate))} : p)));
-  };
-  const removeFromSet = (id: string) => setActive((prev) => prev.filter((p) => p.id !== id));
 
   return (
     <div
@@ -435,7 +174,7 @@ export function Home() {
           <div className="text-xs text-neutral-500">shadcn/ui • Next.js</div>
         </header>
 
-        {!npcs || !items ? (
+        {!monsters || !items || !locations || !skills ? (
           <Card className="max-w-3xl mx-auto">
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -452,7 +191,7 @@ export function Home() {
                   value={loadPct}
                   aria-label={loadPct < 100 ? 'Loading data' : 'Completed loading'}
                 />
-                <div className="text-xs text-neutral-500">We are fetching NPCs and Items from CDN, parsing large JSON
+                <div className="text-xs text-neutral-500">We are fetching databases from CDN, parsing large JSON
                   files, and indexing. This may take a few seconds.
                 </div>
                 {error && <div className="text-sm text-red-600">{error}</div>}
@@ -482,24 +221,6 @@ export function Home() {
                     <div className="sm:col-span-1">
                       <Label>Shot</Label>
                       <div className="mt-2">
-                        {/*<RadioGroup*/}
-                        {/*  defaultValue="none"*/}
-                        {/*  className={"grid-flow-col"}*/}
-                        {/*  onValueChange={(value: "none" | "ss" | "bss") => setShot(value)}*/}
-                        {/*>*/}
-                        {/*  <div className="flex items-center space-x-2">*/}
-                        {/*    <RadioGroupItem value="none" id="none"/>*/}
-                        {/*    <Label htmlFor="none">None</Label>*/}
-                        {/*  </div>*/}
-                        {/*  <div className="flex items-center space-x-2">*/}
-                        {/*    <RadioGroupItem value="ss" id="ss"/>*/}
-                        {/*    <Label htmlFor="ss">Spiritshots</Label>*/}
-                        {/*  </div>*/}
-                        {/*  <div className="flex items-center space-x-2">*/}
-                        {/*    <RadioGroupItem value="bss" id="bss"/>*/}
-                        {/*    <Label htmlFor="bss">Blessed spiritshots</Label>*/}
-                        {/*  </div>*/}
-                        {/*</RadioGroup>*/}
                         <Select
                           defaultValue="none"
                           onValueChange={(value: "none" | "ss" | "bss") => setShot(value)}
