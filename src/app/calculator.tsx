@@ -538,8 +538,8 @@ export default function Calculator() {
     <div className="min-h-screen bg-gradient-to-b from-white to-neutral-100 dark:from-black dark:to-neutral-950 text-neutral-900 dark:text-neutral-100">
       <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
         <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">L2 Mage Farm Helper</h1>
-          <div className="text-xs text-neutral-500">shadcn/ui • Next.js</div>
+          <h1 className="text-2xl font-semibold tracking-tight">L2Reborn Mage Farm Helper (C5)</h1>
+          <div className="text-xs text-neutral-500">created by <b>God</b> (L2Reborn Signature Franz) • shadcn/ui • Next.js</div>
         </header>
 
         {!monsters.length || !items.length || !locations.length || !skills.length ? (
