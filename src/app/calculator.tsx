@@ -877,7 +877,7 @@ export default function Calculator() {
                         </div>
                       ) : !currentStats ? (
                         <div className="text-sm text-neutral-500">Pick an NPC to see details.</div>
-                      ) : (
+                      ) : selectedNpc ? (
                         <div className="space-y-4 text-sm">
                           <div>
                             <div className="text-lg font-medium flex items-center gap-3">
@@ -953,7 +953,7 @@ export default function Calculator() {
                             </div>
                           </div>
                         </div>
-                      )}
+                      ) : null}
                     </CardContent>
                   </Card>
                 </div>
