@@ -46,6 +46,10 @@ type MonsterCalculation = {
 
 type ActiveEntry = { id: number; name: string; rate: number };
 
+type SearchResult =
+  | { type: 'monster'; monster: Monster }
+  | { type: 'location'; location: Location };
+
 type LocationAggregate = {
   location: Location;
   monsterCount: number;
@@ -186,6 +190,7 @@ export default function Calculator() {
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounced(query, 150);
   const [selectedNpc, setSelectedNpc] = useState<Monster | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
   const [openList, setOpenList] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -326,6 +331,7 @@ export default function Calculator() {
         setSkills(normalizedSkills);
         setItemsById(itemMap);
         setMonstersById(monsterMap);
+        setSelectedLocation(null);
         setSelectedNpc((prev) => prev ?? (normalizedMonsters[0] ?? null));
         setLoadPct(100);
         setLoadLabel('Ready');
@@ -348,6 +354,18 @@ export default function Calculator() {
     const q = debouncedQuery.toLowerCase();
     return monsters.filter((mon) => mon.name.toLowerCase().includes(q)).slice(0, 50);
   }, [monsters, debouncedQuery]);
+
+  const filteredLocations = useMemo(() => {
+    if (!debouncedQuery) return locations.slice(0, 25);
+    const q = debouncedQuery.toLowerCase();
+    return locations.filter((loc) => loc.name.toLowerCase().includes(q)).slice(0, 25);
+  }, [locations, debouncedQuery]);
+
+  const searchResults: SearchResult[] = useMemo(() => {
+    const monsterEntries = filteredMonsters.map((monster) => ({type: 'monster' as const, monster}));
+    const locationEntries = filteredLocations.map((location) => ({type: 'location' as const, location}));
+    return [...monsterEntries, ...locationEntries];
+  }, [filteredMonsters, filteredLocations]);
 
   const resolveDrops = useCallback(
     (monster: Monster): ResolvedDrop[] => {
@@ -412,6 +430,14 @@ export default function Calculator() {
 
   const currentStats = useMemo(() => (selectedNpc ? calculate(selectedNpc) : null), [selectedNpc, calculate]);
 
+  const selectedLocationStats = useMemo(() => {
+    if (!selectedLocation) return [];
+    const entries = monsters
+      .filter((monster) => monster.locations?.some((loc) => loc.id === selectedLocation.id))
+      .map((monster) => calculate(monster));
+    return entries.sort((a, b) => b.netAdenaPerKill - a.netAdenaPerKill);
+  }, [selectedLocation, monsters, calculate]);
+
   const suggestedMonsters = useMemo(() => {
     const results: MonsterCalculation[] = [];
     for (const monster of monsters) {
@@ -469,6 +495,22 @@ export default function Calculator() {
 
   const hitsPerKill = currentStats?.hits ?? 0;
   const perKillShotCost = currentStats?.shotCostPerKill ?? 0;
+
+  const handleSearchSelection = useCallback(
+    (entry: SearchResult) => {
+      if (entry.type === 'monster') {
+        setSelectedNpc(entry.monster);
+        setSelectedLocation(null);
+        setQuery(entry.monster.name);
+      } else {
+        setSelectedLocation(entry.location);
+        setSelectedNpc(null);
+        setQuery(entry.location.name);
+      }
+      setOpenList(false);
+    },
+    [],
+  );
 
   const addMonsterToSet = useCallback((monster: Monster | null) => {
     if (!monster) return;
@@ -670,8 +712,8 @@ export default function Calculator() {
                   <Card className="lg:col-span-1">
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <div className="text-sm font-semibold">Search NPC</div>
-                        <div className="text-xs text-neutral-500">{monsters.length.toLocaleString()} NPCs</div>
+                        <div className="text-sm font-semibold">Search NPC or location</div>
+                        <div className="text-xs text-neutral-500">{monsters.length.toLocaleString()} NPCs • {locations.length.toLocaleString()} locations</div>
                       </div>
                     </CardHeader>
                     <CardContent>
@@ -685,28 +727,32 @@ export default function Calculator() {
                           }}
                           onFocus={() => setOpenList(true)}
                           onBlur={() => setTimeout(() => setOpenList(false), 150)}
-                          placeholder="Type NPC name..."
+                          placeholder="Type NPC or location name..."
                         />
                         {openList && (
                           <div className="absolute z-10 mt-2 max-h-80 w-full overflow-auto rounded-md border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 shadow-lg">
-                            {filteredMonsters.length === 0 ? (
+                            {searchResults.length === 0 ? (
                               <div className="p-3 text-sm text-neutral-500">No results</div>
                             ) : (
-                              filteredMonsters.map((monster) => (
+                              searchResults.map((entry) => (
                                 <button
-                                  key={monster.npc_id}
+                                  key={entry.type === 'monster' ? `monster-${entry.monster.npc_id}` : `location-${entry.location.id}`}
                                   type="button"
                                   onMouseDown={(e) => e.preventDefault()}
-                                  onClick={() => {
-                                    setSelectedNpc(monster);
-                                    setQuery(monster.name);
-                                    setOpenList(false);
-                                  }}
-                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800 ${selectedNpc?.npc_id === monster.npc_id ? 'bg-neutral-100 dark:bg-neutral-800' : ''}`}
+                                  onClick={() => handleSearchSelection(entry)}
+                                  className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-100 dark:hover:bg-neutral-800${
+                                    entry.type === 'monster' && selectedNpc?.npc_id === entry.monster.npc_id
+                                      ? ' bg-neutral-100 dark:bg-neutral-800'
+                                      : selectedLocation && entry.type === 'location' && selectedLocation.id === entry.location.id
+                                        ? ' bg-neutral-100 dark:bg-neutral-800'
+                                        : ''
+                                  }`}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span>{monster.name}</span>
-                                    <span className="text-xs text-neutral-500">Lv {monster.level || '-'}</span>
+                                    <span>{entry.type === 'monster' ? entry.monster.name : entry.location.name}</span>
+                                    <span className="text-xs text-neutral-500">
+                                      {entry.type === 'monster' ? `Lv ${entry.monster.level || '-'}` : 'Location'}
+                                    </span>
                                   </div>
                                 </button>
                               ))
@@ -720,7 +766,9 @@ export default function Calculator() {
                   <Card className="lg:col-span-2">
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <div className="text-sm font-semibold">NPC Details</div>
+                        <div className="text-sm font-semibold">
+                          {selectedLocation ? 'Location details' : 'NPC Details'}
+                        </div>
                         {selectedNpc && (
                           <button
                             onClick={() => addMonsterToSet(selectedNpc)}
@@ -733,7 +781,101 @@ export default function Calculator() {
                       </div>
                     </CardHeader>
                     <CardContent>
-                      {!selectedNpc || !currentStats ? (
+                      {!selectedNpc && !selectedLocation ? (
+                        <div className="text-sm text-neutral-500">Pick an NPC or location to see details.</div>
+                      ) : selectedLocation ? (
+                        <div className="space-y-4 text-sm">
+                          <div>
+                            <div className="text-lg font-medium">{selectedLocation.name}</div>
+                            <div className="text-xs text-neutral-500">
+                              Location ID {selectedLocation.id} • {selectedLocationStats.length} monsters
+                            </div>
+                          </div>
+                          {selectedLocationStats.length === 0 ? (
+                            <div className="text-sm text-neutral-500">No monsters recorded for this location.</div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {selectedLocationStats.map((entry) => (
+                                <div
+                                  key={entry.monster.npc_id}
+                                  className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 p-4 space-y-3"
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                      <div className="text-sm font-semibold">{entry.monster.name}</div>
+                                      <div className="text-xs text-neutral-500">
+                                        Level {entry.monster.level || '-'} • ID {entry.monster.npc_id}
+                                      </div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-xs text-neutral-500">Hits</div>
+                                      <div className="text-sm font-medium">{isFinite(entry.hits) ? entry.hits : '∞'}</div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-xs text-neutral-500">Net adena</div>
+                                      <div className={`text-sm font-medium ${entry.netAdenaPerKill < 0 ? 'text-red-600' : 'text-indigo-600 dark:text-indigo-400'}`}>
+                                        {entry.netAdenaPerKill.toFixed(1)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                      <div className="text-neutral-500">HP</div>
+                                      <div className="text-sm font-medium">{entry.hp.toLocaleString()}</div>
+                                    </div>
+                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                      <div className="text-neutral-500">M.Def</div>
+                                      <div className="text-sm font-medium">{entry.mdef.toLocaleString()}</div>
+                                    </div>
+                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                      <div className="text-neutral-500">Damage</div>
+                                      <div className="text-sm font-medium">{entry.dmg.toFixed(0)}</div>
+                                    </div>
+                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                      <div className="text-neutral-500">Exp</div>
+                                      <div className="text-sm font-medium">{entry.exp.toLocaleString()}</div>
+                                    </div>
+                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                      <div className="text-neutral-500">Exp/Hit</div>
+                                      <div className="text-sm font-medium">{entry.expPerHit.toFixed(1)}</div>
+                                    </div>
+                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                      <div className="text-neutral-500">Adena</div>
+                                      <div className="text-sm font-medium">{entry.adena.toFixed(1)}</div>
+                                    </div>
+                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                      <div className="text-neutral-500">Adena/Hit</div>
+                                      <div className="text-sm font-medium">{entry.adenaPerHit.toFixed(2)}</div>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
+                                    <div>
+                                      Shot cost:{' '}
+                                      <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                                        {entry.shotCostPerKill.toFixed(1)} adena
+                                      </span>
+                                    </div>
+                                    <div>
+                                      Herb drop:{' '}
+                                      <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                                        {entry.herbs ? 'Yes' : 'No'}
+                                      </span>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => addMonsterToSet(entry.monster)}
+                                      disabled={active.some((p) => p.id === entry.monster.npc_id)}
+                                      className="ml-auto text-xs rounded-md border border-black/10 dark:border-white/10 px-3 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                                    >
+                                      {active.some((p) => p.id === entry.monster.npc_id) ? 'Added' : 'Add to set'}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : !currentStats ? (
                         <div className="text-sm text-neutral-500">Pick an NPC to see details.</div>
                       ) : (
                         <div className="space-y-4 text-sm">
