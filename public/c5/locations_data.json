@@ -1,0 +1,682 @@
+{
+    "17": {
+        "id": "17",
+        "name": "Hardin's Academy"
+    },
+    "101": {
+        "id": "101",
+        "name": "The Forbidden Gateway"
+    },
+    "208": {
+        "id": "208",
+        "name": "Forest of the Dead"
+    },
+    "209": {
+        "id": "209",
+        "name": "Cursed Village"
+    },
+    "197": {
+        "id": "197",
+        "name": "Four Sepulchers"
+    },
+    "192": {
+        "id": "192",
+        "name": "Pilgrim's Temple"
+    },
+    "199": {
+        "id": "199",
+        "name": "The Last Imperial Tomb"
+    },
+    "50": {
+        "id": "50",
+        "name": "Cedric's Training Hall"
+    },
+    "51": {
+        "id": "51",
+        "name": "Einhovant's School of Magic"
+    },
+    "69": {
+        "id": "69",
+        "name": "Shadow of the Mother Tree"
+    },
+    "74": {
+        "id": "74",
+        "name": "The Shilen Temple"
+    },
+    "130": {
+        "id": "130",
+        "name": "The Pa'agrio Temple"
+    },
+    "139": {
+        "id": "139",
+        "name": "Strip Mine"
+    },
+    "86": {
+        "id": "86",
+        "name": "Shilen's Garden"
+    },
+    "75": {
+        "id": "75",
+        "name": "Dark Elf Village"
+    },
+    "52": {
+        "id": "52",
+        "name": "Obelisk of Victory"
+    },
+    "54": {
+        "id": "54",
+        "name": "Talking Island Harbor"
+    },
+    "56": {
+        "id": "56",
+        "name": "Talking Island, Eastern Territory"
+    },
+    "73": {
+        "id": "73",
+        "name": "The Dark Forest"
+    },
+    "57": {
+        "id": "57",
+        "name": "Fellmere Harvesting Grounds"
+    },
+    "60": {
+        "id": "60",
+        "name": "Evil Hunting Grounds"
+    },
+    "47": {
+        "id": "47",
+        "name": "Maille Lizardmen Barracks"
+    },
+    "68": {
+        "id": "68",
+        "name": "Elven Forest"
+    },
+    "77": {
+        "id": "77",
+        "name": "Swampland"
+    },
+    "55": {
+        "id": "55",
+        "name": "Talking Island, Western Territory"
+    },
+    "58": {
+        "id": "58",
+        "name": "Windmill Hill"
+    },
+    "95": {
+        "id": "95",
+        "name": "Undine Waterfall"
+    },
+    "76": {
+        "id": "76",
+        "name": "School of Dark Arts"
+    },
+    "46": {
+        "id": "46",
+        "name": "Langk Lizardmen Dwellings"
+    },
+    "87": {
+        "id": "87",
+        "name": "Black Rock Hill"
+    },
+    "32": {
+        "id": "32",
+        "name": "Ruins of Agony"
+    },
+    "41": {
+        "id": "41",
+        "name": "Fellmere Lake"
+    },
+    "59": {
+        "id": "59",
+        "name": "Ruins of Agony Bend"
+    },
+    "35": {
+        "id": "35",
+        "name": "Gludin Village"
+    },
+    "71": {
+        "id": "71",
+        "name": "Elven Fortress"
+    },
+    "78": {
+        "id": "78",
+        "name": "Altar of Rites"
+    },
+    "88": {
+        "id": "88",
+        "name": "Spider Nest"
+    },
+    "66": {
+        "id": "66",
+        "name": "The Neutral Zone"
+    },
+    "31": {
+        "id": "31",
+        "name": "Ruins of Despair"
+    },
+    "38": {
+        "id": "38",
+        "name": "Abandoned Camp "
+    },
+    "53": {
+        "id": "53",
+        "name": "Elven Ruins"
+    },
+    "62": {
+        "id": "62",
+        "name": "Windawood Manor"
+    },
+    "63": {
+        "id": "63",
+        "name": "Ol Mahum Checkpoint"
+    },
+    "7": {
+        "id": "7",
+        "name": "Town of Dion"
+    },
+    "9": {
+        "id": "9",
+        "name": "Dion Castle"
+    },
+    "12": {
+        "id": "12",
+        "name": "Dion Hills"
+    },
+    "3": {
+        "id": "3",
+        "name": "Fortress of Resistance"
+    },
+    "15": {
+        "id": "15",
+        "name": "Fortress of Resistance"
+    },
+    "33": {
+        "id": "33",
+        "name": "Wasteland"
+    },
+    "45": {
+        "id": "45",
+        "name": "Red Rock Ridge"
+    },
+    "8": {
+        "id": "8",
+        "name": "Floran Village"
+    },
+    "13": {
+        "id": "13",
+        "name": "Floran Agricultural Area"
+    },
+    "14": {
+        "id": "14",
+        "name": "Plains of Dion"
+    },
+    "129": {
+        "id": "129",
+        "name": "Arena"
+    },
+    "64": {
+        "id": "64",
+        "name": "Ant Incubator"
+    },
+    "34": {
+        "id": "34",
+        "name": "The Ant Nest"
+    },
+    "44": {
+        "id": "44",
+        "name": "Windy Hill"
+    },
+    "65": {
+        "id": "65",
+        "name": "Singing Waterfall"
+    },
+    "49": {
+        "id": "49",
+        "name": "Talking Island Village"
+    },
+    "29": {
+        "id": "29",
+        "name": "Gorgon Flower Garden"
+    },
+    "125": {
+        "id": "125",
+        "name": "Alligator Island"
+    },
+    "128": {
+        "id": "128",
+        "name": "Alligator Beach"
+    },
+    "5": {
+        "id": "5",
+        "name": "Cruma Tower"
+    },
+    "135": {
+        "id": "135",
+        "name": "Hero's Valley"
+    },
+    "136": {
+        "id": "136",
+        "name": "Immortal Plateau, Northern Region"
+    },
+    "137": {
+        "id": "137",
+        "name": "Immortal Plateau, Southern Region"
+    },
+    "2": {
+        "id": "2",
+        "name": "Execution Grounds"
+    },
+    "27": {
+        "id": "27",
+        "name": "Giran Castle"
+    },
+    "21": {
+        "id": "21",
+        "name": "Death Pass"
+    },
+    "28": {
+        "id": "28",
+        "name": "Breka's Stronghold"
+    },
+    "145": {
+        "id": "145",
+        "name": "Western Mining Zone"
+    },
+    "4": {
+        "id": "4",
+        "name": "Cruma Marshlands"
+    },
+    "80": {
+        "id": "80",
+        "name": "Bandit Stronghold"
+    },
+    "92": {
+        "id": "92",
+        "name": "Outlaw Forest"
+    },
+    "113": {
+        "id": "113",
+        "name": "Ancient Battleground"
+    },
+    "26": {
+        "id": "26",
+        "name": "Arena"
+    },
+    "81": {
+        "id": "81",
+        "name": "Ivory Tower"
+    },
+    "91": {
+        "id": "91",
+        "name": "Forest of Evil"
+    },
+    "96": {
+        "id": "96",
+        "name": "The Gods' Falls"
+    },
+    "131": {
+        "id": "131",
+        "name": "Orc Village"
+    },
+    "124": {
+        "id": "124",
+        "name": "Garden of Eva"
+    },
+    "140": {
+        "id": "140",
+        "name": "Dwarven Village"
+    },
+    "70": {
+        "id": "70",
+        "name": "Elven Village"
+    },
+    "94": {
+        "id": "94",
+        "name": "Starlight Waterfall"
+    },
+    "133": {
+        "id": "133",
+        "name": "Cave of Trials"
+    },
+    "142": {
+        "id": "142",
+        "name": "Abandoned Coal Mines"
+    },
+    "134": {
+        "id": "134",
+        "name": "Frozen Waterfalls"
+    },
+    "143": {
+        "id": "143",
+        "name": "Mithril Mines"
+    },
+    "39": {
+        "id": "39",
+        "name": "Orc Barracks"
+    },
+    "144": {
+        "id": "144",
+        "name": "Frozen Valley"
+    },
+    "79": {
+        "id": "79",
+        "name": "Sea of Spores"
+    },
+    "84": {
+        "id": "84",
+        "name": "Plains of the Lizardmen"
+    },
+    "89": {
+        "id": "89",
+        "name": "Timak Outpost "
+    },
+    "82": {
+        "id": "82",
+        "name": "Town of Oren"
+    },
+    "83": {
+        "id": "83",
+        "name": "Oren Castle"
+    },
+    "103": {
+        "id": "103",
+        "name": "The Enchanted Valley"
+    },
+    "108": {
+        "id": "108",
+        "name": "Hunters Village"
+    },
+    "116": {
+        "id": "116",
+        "name": "Hunters Valley"
+    },
+    "40": {
+        "id": "40",
+        "name": "Forgotten Temple"
+    },
+    "19": {
+        "id": "19",
+        "name": "Antharas' Lair "
+    },
+    "105": {
+        "id": "105",
+        "name": "The Forest of Mirrors"
+    },
+    "106": {
+        "id": "106",
+        "name": "Anghel Waterfall"
+    },
+    "102": {
+        "id": "102",
+        "name": "The Giant's Cave"
+    },
+    "115": {
+        "id": "115",
+        "name": "Silent Valley"
+    },
+    "104": {
+        "id": "104",
+        "name": "The Cemetery"
+    },
+    "107": {
+        "id": "107",
+        "name": "Town of Aden"
+    },
+    "119": {
+        "id": "119",
+        "name": "War-Torn Plains"
+    },
+    "100": {
+        "id": "100",
+        "name": "Devastated Castle"
+    },
+    "118": {
+        "id": "118",
+        "name": "Fields of Massacre"
+    },
+    "99": {
+        "id": "99",
+        "name": "Blazing Swamp"
+    },
+    "114": {
+        "id": "114",
+        "name": "Forsaken Plains "
+    },
+    "117": {
+        "id": "117",
+        "name": "Plains of Glory"
+    },
+    "112": {
+        "id": "112",
+        "name": "Aden Castle"
+    },
+    "122": {
+        "id": "122",
+        "name": "Field of Silence"
+    },
+    "123": {
+        "id": "123",
+        "name": "Field of Whispers"
+    },
+    "98": {
+        "id": "98",
+        "name": "Tower of Insolence"
+    },
+    "23": {
+        "id": "23",
+        "name": "Devil's Isle"
+    },
+    "37": {
+        "id": "37",
+        "name": "Town of Gludio"
+    },
+    "43": {
+        "id": "43",
+        "name": "Gludio Castle"
+    },
+    "11": {
+        "id": "11",
+        "name": "Bee Hive"
+    },
+    "10": {
+        "id": "10",
+        "name": "Tanor Canyon"
+    },
+    "85": {
+        "id": "85",
+        "name": "Skyshadow Meadow"
+    },
+    "109": {
+        "id": "109",
+        "name": "Eastern Border Outpost"
+    },
+    "146": {
+        "id": "146",
+        "name": "Eastern Mining Zone"
+    },
+    "161": {
+        "id": "161",
+        "name": "Necropolis of Sacrifice"
+    },
+    "166": {
+        "id": "166",
+        "name": "Catacomb of the Heretic"
+    },
+    "167": {
+        "id": "167",
+        "name": "The Pilgrim's Necropolis"
+    },
+    "165": {
+        "id": "165",
+        "name": "Catacomb of the Branded"
+    },
+    "169": {
+        "id": "169",
+        "name": "Necropolis of Worship"
+    },
+    "171": {
+        "id": "171",
+        "name": "Catacomb of the Apostate"
+    },
+    "163": {
+        "id": "163",
+        "name": "The Patriot's Necropolis"
+    },
+    "162": {
+        "id": "162",
+        "name": "Necropolis of Devotion"
+    },
+    "173": {
+        "id": "173",
+        "name": "Catacomb of the Witch"
+    },
+    "170": {
+        "id": "170",
+        "name": "Necropolis of Martyrdom"
+    },
+    "168": {
+        "id": "168",
+        "name": "The Saint's Necropolis"
+    },
+    "174": {
+        "id": "174",
+        "name": "The Disciple's Necropolis"
+    },
+    "164": {
+        "id": "164",
+        "name": "Catacomb of Dark Omens"
+    },
+    "172": {
+        "id": "172",
+        "name": "Catacomb of the Forbidden Path"
+    },
+    "181": {
+        "id": "181",
+        "name": "Town of Goddard"
+    },
+    "182": {
+        "id": "182",
+        "name": "Goddard Castle"
+    },
+    "183": {
+        "id": "183",
+        "name": "Garden of Beasts"
+    },
+    "193": {
+        "id": "193",
+        "name": "Wall of Argos"
+    },
+    "194": {
+        "id": "194",
+        "name": "Shrine of Loyalty"
+    },
+    "184": {
+        "id": "184",
+        "name": "Hot Springs"
+    },
+    "189": {
+        "id": "189",
+        "name": "Ketra Orc Outpost"
+    },
+    "190": {
+        "id": "190",
+        "name": "Ketra Orc Village"
+    },
+    "195": {
+        "id": "195",
+        "name": "Varka Silenos Barracks"
+    },
+    "196": {
+        "id": "196",
+        "name": "Varka Silenos Village"
+    },
+    "186": {
+        "id": "186",
+        "name": "Forge of the Gods"
+    },
+    "187": {
+        "id": "187",
+        "name": "Hall of Flames"
+    },
+    "191": {
+        "id": "191",
+        "name": "Imperial Tomb"
+    },
+    "198": {
+        "id": "198",
+        "name": "Devil's Pass"
+    },
+    "205": {
+        "id": "205",
+        "name": "Beast Farm"
+    },
+    "206": {
+        "id": "206",
+        "name": "Wild Beast Reserve"
+    },
+    "204": {
+        "id": "204",
+        "name": "Windtail Waterfall"
+    },
+    "211": {
+        "id": "211",
+        "name": "Swamp of Screams"
+    },
+    "214": {
+        "id": "214",
+        "name": "Stakato Nest"
+    },
+    "207": {
+        "id": "207",
+        "name": "Valley of Saints"
+    },
+    "201": {
+        "id": "201",
+        "name": "Rune Township"
+    },
+    "154": {
+        "id": "154",
+        "name": "Crypts of Disgrace"
+    },
+    "148": {
+        "id": "148",
+        "name": "Plunderous Plains"
+    },
+    "217": {
+        "id": "217",
+        "name": "Brigand Stronghold"
+    },
+    "160": {
+        "id": "160",
+        "name": "Sky Wagon Relic"
+    },
+    "152": {
+        "id": "152",
+        "name": "Caron's Dungeon"
+    },
+    "153": {
+        "id": "153",
+        "name": "Den of Evil"
+    },
+    "151": {
+        "id": "151",
+        "name": "Pavel Ruins"
+    },
+    "149": {
+        "id": "149",
+        "name": "Frozen Labyrinth"
+    },
+    "159": {
+        "id": "159",
+        "name": "Frost Lake"
+    },
+    "216": {
+        "id": "216",
+        "name": "Ice Merchant's Hut"
+    },
+    "72": {
+        "id": "72",
+        "name": "Iris Lake"
+    }
+}
