@@ -377,10 +377,10 @@ export default function Calculator() {
       const mdef = Math.round(baseMdef * mDefSkillMultiplier(skillsList));
       const dmg =
         dmgMultiplier *
-        91 *
+        92 *
         Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) *
         Math.max(0, skillPower) /
-        (Math.max(1, mdef) * 0.91);
+        (Math.max(1, mdef));
       const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
       const expPerHit = hits && isFinite(hits) ? exp / hits : 0;
       const adenaDrop = drops.find((drop) => drop.itemId === ADENA_ITEM_ID);
@@ -653,7 +653,7 @@ export default function Calculator() {
             </Card>
 
             <Tabs defaultValue="search" className="space-y-4">
-              <TabsList className="grid grid-cols-1 sm:grid-cols-4">
+              <TabsList>
                 <TabsTrigger value="search">Search</TabsTrigger>
                 <TabsTrigger value="monsters">Monsters</TabsTrigger>
                 <TabsTrigger value="locations">Locations</TabsTrigger>
@@ -862,6 +862,7 @@ export default function Calculator() {
                               </div>
                             </div>
                             <div className="flex items-center justify-between">
+                              <div className="text-xs text-neutral-500">Total Exp: {entry.exp.toFixed(0)}</div>
                               <div className="text-xs text-neutral-500">Total Adena: {entry.adena.toFixed(0)}</div>
                               <button
                                 onClick={() => addMonsterToSet(entry.monster)}
