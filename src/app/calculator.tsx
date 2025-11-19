@@ -17,8 +17,6 @@ import {
 } from '@/lib/formulas';
 
 const ADENA_ITEM_ID = 57;
-const HERB_MIN = 8600;
-const HERB_MAX = 8605;
 
 type ResolvedDrop = {
   itemId: number;
@@ -27,6 +25,8 @@ type ResolvedDrop = {
   max: number;
   chance: number;
   spoil: number;
+  itemType?: string;
+  etcItemType?: string;
 };
 
 type MonsterCalculation = {
@@ -46,6 +46,12 @@ type MonsterCalculation = {
 
 type ActiveEntry = { id: number; name: string; rate: number };
 
+type ActiveEntryDetails = ActiveEntry & {
+  monster: Monster;
+  stats: MonsterCalculation;
+  drops: ResolvedDrop[];
+};
+
 type SearchResult =
   | { type: 'monster'; monster: Monster }
   | { type: 'location'; location: Location };
@@ -60,7 +66,14 @@ type LocationAggregate = {
   monsters: MonsterCalculation[];
 };
 
-type RawItem = { item_id?: string | number; id?: string | number; name?: string };
+type RawItem = {
+  item_id?: string | number;
+  id?: string | number;
+  name?: string;
+  item_type?: string;
+  etcitem_type?: string;
+  weapon_type?: string;
+};
 type RawLocation = { id?: string | number; name?: string };
 type RawSkill = { skill_id?: string | number; id?: string | number; name?: string; level?: string | number };
 type RawDrop = { item_id?: string | number; min?: string | number; max?: string | number; chance?: string | number; spoil?: string | number };
@@ -110,10 +123,6 @@ function toNum(value: unknown, fallback = 0): number {
 
 function shotMultiplier(s: 'none' | 'ss' | 'bss') {
   return s === 'none' ? 1 : s === 'ss' ? 2 : 4;
-}
-
-function hasHerbDrop(drops: ResolvedDrop[]): boolean {
-  return drops.some((d) => d.itemId >= HERB_MIN && d.itemId <= HERB_MAX);
 }
 
 function mDefSkillMultiplier(skills: MonsterSkill[]): number {
@@ -271,6 +280,9 @@ export default function Calculator() {
         const normalizedItems: Item[] = itemsListRaw.map((item) => ({
           item_id: toNum(item.item_id ?? item.id),
           name: String(item.name ?? `#${item.item_id ?? item.id}`),
+          item_type: item.item_type ? String(item.item_type) : undefined,
+          etcitem_type: item.etcitem_type ? String(item.etcitem_type) : undefined,
+          weapon_type: item.weapon_type ? String(item.weapon_type) : undefined,
         }));
         const itemMap: Record<number, Item> = {};
         for (const it of normalizedItems) itemMap[it.item_id] = it;
@@ -369,16 +381,37 @@ export default function Calculator() {
 
   const resolveDrops = useCallback(
     (monster: Monster): ResolvedDrop[] => {
-      return (monster.items || []).map((drop) => ({
-        itemId: drop.item_id,
-        name: itemsById[drop.item_id]?.name ?? `#${drop.item_id}`,
-        min: drop.min,
-        max: drop.max,
-        chance: drop.chance,
-        spoil: drop.spoil,
-      }));
+      return (monster.items || []).map((drop) => {
+        const item = itemsById[drop.item_id];
+        return {
+          itemId: drop.item_id,
+          name: item?.name ?? `#${drop.item_id}`,
+          min: drop.min,
+          max: drop.max,
+          chance: drop.chance,
+          spoil: drop.spoil,
+          itemType: item?.item_type,
+          etcItemType: item?.etcitem_type,
+        };
+      });
     },
     [itemsById],
+  );
+
+  const isHerbItem = useCallback(
+    (itemId: number): boolean => {
+      const item = itemsById[itemId];
+      if (!item) return false;
+      if (item.item_type !== 'etcitem') return false;
+      if (item.etcitem_type !== 'potion') return false;
+      return /herb/i.test(item.name);
+    },
+    [itemsById],
+  );
+
+  const hasHerbDrop = useCallback(
+    (drops: ResolvedDrop[]): boolean => drops.some((drop) => isHerbItem(drop.itemId)),
+    [isHerbItem],
   );
 
   const calculate = useCallback(
@@ -423,7 +456,7 @@ export default function Calculator() {
         netAdenaPerKill,
       };
     },
-    [resolveDrops, element, matk, shot, skillPower, ssPrice, bssPrice],
+    [resolveDrops, element, matk, shot, skillPower, ssPrice, bssPrice, hasHerbDrop],
   );
 
   const selectedDrops = useMemo(() => (selectedNpc ? resolveDrops(selectedNpc) : []), [selectedNpc, resolveDrops]);
@@ -517,33 +550,63 @@ export default function Calculator() {
     const id = monster.npc_id;
     setActive((prev) => {
       if (prev.some((p) => p.id === id)) return prev;
-      const remain = Math.max(0, 100 - prev.reduce((a, b) => a + b.rate, 0));
-      return [...prev, {id, name: monster.name, rate: remain || 0}];
+      const next = [...prev, {id, name: monster.name, rate: 0}];
+      if (next.length === 0) return next;
+      const baseShare = Number((100 / next.length).toFixed(3));
+      let remaining = 100;
+      return next.map((entry, index) => {
+        const isLast = index === next.length - 1;
+        const rate = isLast ? Number(remaining.toFixed(3)) : baseShare;
+        remaining = Math.max(0, remaining - rate);
+        return {...entry, rate};
+      });
     });
   }, []);
 
   const totalRate = active.reduce((acc, curr) => acc + curr.rate, 0);
 
+  const activeDetails = useMemo<ActiveEntryDetails[]>(() => {
+    return active
+      .map((entry) => {
+        const monster = monstersById[entry.id];
+        if (!monster) return null;
+        return {
+          ...entry,
+          monster,
+          stats: calculate(monster),
+          drops: resolveDrops(monster),
+        };
+      })
+      .filter((entry): entry is ActiveEntryDetails => Boolean(entry));
+  }, [active, monstersById, calculate, resolveDrops]);
+
+  const activeDetailsMap = useMemo(() => {
+    const map: Record<number, ActiveEntryDetails> = {};
+    for (const detail of activeDetails) {
+      map[detail.id] = detail;
+    }
+    return map;
+  }, [activeDetails]);
+
   const setAggregates = useMemo(() => {
-    if (active.length === 0) return null;
+    if (activeDetails.length === 0) return null;
     let adenaPerKill = 0;
     let shotCostPerKill = 0;
-    const itemExpectedPerKill: Record<number, {name: string; expectedQty: number}> = {};
+    const itemExpectedPerKill: Record<number, {name: string; expectedQty: number; isHerb: boolean}> = {};
 
-    for (const entry of active) {
-      const monster = monstersById[entry.id];
-      if (!monster) continue;
+    for (const entry of activeDetails) {
       const weight = entry.rate / 100;
-      const stats = calculate(monster);
+      const stats = entry.stats;
+      const drops = entry.drops;
       adenaPerKill += stats.adena * weight;
       shotCostPerKill += stats.shotCostPerKill * weight;
-      const drops = resolveDrops(monster);
       for (const drop of drops) {
+        if (drop.spoil > 0) continue;
         const avgQty = (drop.min + drop.max) / 2;
         const expected = drop.chance * avgQty * weight;
         if (expected <= 0) continue;
         if (!itemExpectedPerKill[drop.itemId]) {
-          itemExpectedPerKill[drop.itemId] = {name: drop.name, expectedQty: 0};
+          itemExpectedPerKill[drop.itemId] = {name: drop.name, expectedQty: 0, isHerb: isHerbItem(drop.itemId)};
         }
         itemExpectedPerKill[drop.itemId].expectedQty += expected;
       }
@@ -555,14 +618,21 @@ export default function Calculator() {
     const netAdenaPerKill = adenaPerKill - shotCostPerKill;
     const netAdenaForSet = netAdenaPerKill * safeTotal;
 
-    const itemsList = Object.entries(itemExpectedPerKill)
+    const dropsList = Object.entries(itemExpectedPerKill)
       .filter(([id]) => Number(id) !== ADENA_ITEM_ID)
       .map(([id, value]) => ({
         id: Number(id),
         name: value.name,
         qtyPerKill: value.expectedQty,
         qtyForSet: value.expectedQty * safeTotal,
-      }))
+        isHerb: value.isHerb,
+      }));
+
+    const normalDrops = dropsList
+      .filter((drop) => !drop.isHerb)
+      .sort((a, b) => b.qtyPerKill - a.qtyPerKill);
+    const herbDrops = dropsList
+      .filter((drop) => drop.isHerb)
       .sort((a, b) => b.qtyPerKill - a.qtyPerKill);
 
     return {
@@ -572,9 +642,10 @@ export default function Calculator() {
       grossAdenaForSet,
       shotCostForSet,
       netAdenaForSet,
-      itemsList,
+      normalDrops,
+      herbDrops,
     };
-  }, [active, monstersById, calculate, resolveDrops, totalMonsters]);
+  }, [activeDetails, totalMonsters, isHerbItem]);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-neutral-100 dark:from-black dark:to-neutral-950 text-neutral-900 dark:text-neutral-100">
@@ -938,17 +1009,25 @@ export default function Calculator() {
                               ) : (
                                 selectedDrops
                                   .sort((a, b) => b.chance - a.chance)
-                                  .map((drop, index) => (
-                                    <div key={`${drop.itemId}-${index}`} className="px-3 py-2 flex items-center justify-between text-sm">
-                                      <div>
-                                        <div className="font-medium">{drop.name}</div>
-                                        <div className="text-xs text-neutral-500">
-                                          Qty {drop.min}-{drop.max} {drop.spoil ? '• Spoil' : ''}
+                                  .map((drop, index) => {
+                                    const isValuable = drop.itemType === 'weapon' || drop.itemType === 'armor';
+                                    return (
+                                      <div
+                                        key={`${drop.itemId}-${index}`}
+                                        className="px-3 py-2 flex items-center justify-between text-sm"
+                                      >
+                                        <div>
+                                          <div className={isValuable ? 'font-semibold' : 'font-medium'}>{drop.name}</div>
+                                          <div className="text-xs text-neutral-500">
+                                            Qty {drop.min}-{drop.max} {drop.spoil ? '• Spoil' : ''}
+                                          </div>
+                                        </div>
+                                        <div className="text-xs text-neutral-600 dark:text-neutral-300">
+                                          {(drop.chance * 100).toFixed(3)}%
                                         </div>
                                       </div>
-                                      <div className="text-xs text-neutral-600 dark:text-neutral-300">{(drop.chance * 100).toFixed(3)}%</div>
-                                    </div>
-                                  ))
+                                    );
+                                  })
                               )}
                             </div>
                           </div>
@@ -1117,28 +1196,45 @@ export default function Calculator() {
                         <div className="text-sm text-neutral-500">No NPCs yet. Add one from any tab.</div>
                       ) : (
                         <div className="space-y-2 text-sm">
-                          {active.map((entry) => (
-                            <div key={entry.id} className="flex items-center gap-2">
-                              <div className="flex-1 truncate" title={entry.name}>{entry.name}</div>
-                              <Input
-                                type="number"
-                                value={entry.rate}
-                                onChange={(e) =>
-                                  setActive((prev) =>
-                                    prev.map((p) => (p.id === entry.id ? {...p, rate: toNum(e.target.value, 0)} : p)),
-                                  )
-                                }
-                                className="w-20"
-                              />
-                              <span className="text-xs text-neutral-500">%</span>
-                              <button
-                                onClick={() => setActive((prev) => prev.filter((p) => p.id !== entry.id))}
-                                className="text-xs rounded-md border border-black/10 dark:border-white/10 px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          ))}
+                          {active.map((entry) => {
+                            const details = activeDetailsMap[entry.id];
+                            return (
+                              <div key={entry.id} className="flex flex-wrap items-center gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="truncate font-medium" title={entry.name}>
+                                    {entry.name}
+                                  </div>
+                                  {details ? (
+                                    <div className="text-xs text-neutral-500 truncate">
+                                      Level {details.monster.level || '-'} • Exp {details.stats.exp.toLocaleString()} • Adena{' '}
+                                      {details.stats.adena.toFixed(1)}
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-neutral-500">Loading stats…</div>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    type="number"
+                                    value={entry.rate}
+                                    onChange={(e) =>
+                                      setActive((prev) =>
+                                        prev.map((p) => (p.id === entry.id ? {...p, rate: toNum(e.target.value, 0)} : p)),
+                                      )
+                                    }
+                                    className="w-20"
+                                  />
+                                  <span className="text-xs text-neutral-500">%</span>
+                                </div>
+                                <button
+                                  onClick={() => setActive((prev) => prev.filter((p) => p.id !== entry.id))}
+                                  className="text-xs rounded-md border border-black/10 dark:border-white/10 px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            );
+                          })}
                           {totalRate !== 100 && (
                             <div className="text-xs text-amber-600">Warning: total rate should sum to 100%.</div>
                           )}
@@ -1188,21 +1284,51 @@ export default function Calculator() {
                               </div>
                             </div>
                           </div>
-                          <div>
-                            <div className="text-xs font-medium mb-1">Drops for set — expected quantities only</div>
-                            <div className="space-y-1 max-h-64 overflow-auto">
-                              {setAggregates.itemsList.length === 0 ? (
-                                <div className="text-xs text-neutral-500">No items</div>
-                              ) : (
-                                setAggregates.itemsList.map((item) => (
-                                  <div key={item.id} className="flex items-center gap-2">
-                                    <div className="flex-1 truncate" title={item.name}>{item.name}</div>
-                                    <div className="w-40 text-right text-xs" title={`${item.qtyForSet.toFixed(3)} total`}>
-                                      {item.qtyForSet.toFixed(3)} qty
+                          <div className="space-y-4">
+                            <div>
+                              <div className="text-xs font-medium mb-1">Drops for set — expected quantities</div>
+                              <div className="space-y-1 max-h-64 overflow-auto">
+                                {setAggregates.normalDrops.length === 0 ? (
+                                  <div className="text-xs text-neutral-500">No normal drops</div>
+                                ) : (
+                                  setAggregates.normalDrops.map((item) => {
+                                    const meta = itemsById[item.id];
+                                    const isValuable = meta?.item_type === 'weapon' || meta?.item_type === 'armor';
+                                    return (
+                                      <div key={item.id} className="flex items-center gap-2">
+                                        <div
+                                          className={`${isValuable ? 'font-semibold' : 'font-medium'} flex-1 truncate`}
+                                          title={item.name}
+                                        >
+                                          {item.name}
+                                        </div>
+                                        <div className="w-40 text-right text-xs" title={`${item.qtyForSet.toFixed(3)} total`}>
+                                          {item.qtyForSet.toFixed(3)} qty
+                                        </div>
+                                      </div>
+                                    );
+                                  })
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-xs font-medium mb-1">Herb drops — expected quantities</div>
+                              <div className="space-y-1 max-h-64 overflow-auto">
+                                {setAggregates.herbDrops.length === 0 ? (
+                                  <div className="text-xs text-neutral-500">No herb drops</div>
+                                ) : (
+                                  setAggregates.herbDrops.map((item) => (
+                                    <div key={item.id} className="flex items-center gap-2 text-xs">
+                                      <div className="flex-1 truncate" title={item.name}>
+                                        {item.name}
+                                      </div>
+                                      <div className="w-40 text-right" title={`${item.qtyForSet.toFixed(3)} total`}>
+                                        {item.qtyForSet.toFixed(3)} qty
+                                      </div>
                                     </div>
-                                  </div>
-                                ))
-                              )}
+                                  ))
+                                )}
+                              </div>
                             </div>
                           </div>
                         </div>
