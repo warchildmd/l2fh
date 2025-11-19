@@ -18,6 +18,9 @@ type Location = {
 type Item = {
   item_id: number;
   name: string;
+  item_type?: string;
+  etcitem_type?: string;
+  weapon_type?: string;
 }
 
 type ItemDrop = {
