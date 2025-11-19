@@ -841,13 +841,19 @@ export default function Calculator() {
                           {selectedLocation ? 'Location details' : 'NPC Details'}
                         </div>
                         {selectedNpc && (
-                          <button
-                            onClick={() => addMonsterToSet(selectedNpc)}
-                            className="text-xs rounded-md border border-black/10 dark:border-white/10 px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-                            type="button"
-                          >
-                            Add to active set
-                          </button>
+                          (() => {
+                            const alreadyActive = active.some((entry) => entry.id === selectedNpc.npc_id);
+                            return (
+                              <button
+                                onClick={() => addMonsterToSet(selectedNpc)}
+                                disabled={alreadyActive}
+                                className="text-xs rounded-md border border-black/10 dark:border-white/10 px-2 py-1 hover:bg-neutral-100 dark:hover:bg-neutral-800 disabled:opacity-50"
+                                type="button"
+                              >
+                                {alreadyActive ? 'Added' : 'Add to active set'}
+                              </button>
+                            );
+                          })()
                         )}
                       </div>
                     </CardHeader>
