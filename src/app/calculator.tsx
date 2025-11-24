@@ -35,6 +35,7 @@ type MonsterCalculation = {
   mdef: number;
   dmg: number;
   hits: number;
+  remainingHp: number;
   exp: number;
   expPerHit: number;
   adena: number;
@@ -82,6 +83,7 @@ type RawMonster = {
   npc_id?: string | number;
   name?: string;
   level?: string | number;
+  race?: string;
   exp?: string | number;
   acquire_sp?: string | number;
   org_hp?: string | number;
@@ -119,6 +121,10 @@ function toNum(value: unknown, fallback = 0): number {
   if (value == null) return fallback;
   const n = typeof value === 'number' ? value : parseFloat(String(value).replace(/,/g, ''));
   return Number.isFinite(n) ? n : fallback;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
 }
 
 function shotMultiplier(s: 'none' | 'ss' | 'bss') {
@@ -192,8 +198,10 @@ export default function Calculator() {
   const [skillPower, setSkillPower] = useState<number>(26);
   const [shot, setShot] = useState<'none' | 'ss' | 'bss'>('none');
   const [element, setElement] = useState<string>('none');
+  const [damageMultiplier, setDamageMultiplier] = useState<number>(100);
   const [ssPrice, setSsPrice] = useState<number>(24);
   const [bssPrice, setBssPrice] = useState<number>(52);
+  const [remainingMonsterHp, setRemainingMonsterHp] = useState<number>(0);
 
   // Selection
   const [query, setQuery] = useState('');
@@ -209,6 +217,7 @@ export default function Calculator() {
   const [suggestedHerbs, setSuggestedHerbs] = useState<boolean>(true);
   const [suggestedMinLevel, setSuggestedMinLevel] = useState<number>(1);
   const [suggestedMaxLevel, setSuggestedMaxLevel] = useState<number>(80);
+  const [undeadOnly, setUndeadOnly] = useState<boolean>(false);
 
   // Active set
   const [active, setActive] = useState<ActiveEntry[]>([]);
@@ -298,6 +307,7 @@ export default function Calculator() {
           npc_id: toNum(monster.npc_id),
           name: String(monster.name ?? ''),
           level: toNum(monster.level),
+          race: String(monster.race ?? ''),
           exp: toNum(monster.exp),
           acquire_sp: toNum(monster.acquire_sp),
           org_hp: toNum(monster.org_hp),
@@ -361,11 +371,16 @@ export default function Calculator() {
     };
   }, []);
 
+  const eligibleMonsters = useMemo(
+    () => monsters.filter((mon) => !undeadOnly || mon.race?.toLowerCase() === 'undead'),
+    [monsters, undeadOnly],
+  );
+
   const filteredMonsters = useMemo(() => {
-    if (!debouncedQuery) return monsters.slice(0, 50);
+    if (!debouncedQuery) return eligibleMonsters.slice(0, 50);
     const q = debouncedQuery.toLowerCase();
-    return monsters.filter((mon) => mon.name.toLowerCase().includes(q)).slice(0, 50);
-  }, [monsters, debouncedQuery]);
+    return eligibleMonsters.filter((mon) => mon.name.toLowerCase().includes(q)).slice(0, 50);
+  }, [eligibleMonsters, debouncedQuery]);
 
   const filteredLocations = useMemo(() => {
     if (!debouncedQuery) return locations.slice(0, 25);
@@ -421,6 +436,7 @@ export default function Calculator() {
       const hpRateSkill = getMonsterHpRate(monster);
       const hpMultiplier = hpRateSkill ? Math.max(0, getMonsterHpRateValue(hpRateSkill)) : 1;
       const dmgMultiplier = elementMultiplierFor(element, skillsList) * elementResistFor(element, skillsList);
+      const damageMultiplierFactor = clamp(damageMultiplier, 20, 180) / 100;
 
       const exp = getMonsterExp(monster);
       const hp = Math.round(monster.org_hp * (hpMultiplier || 1));
@@ -428,11 +444,14 @@ export default function Calculator() {
       const mdef = Math.round(baseMdef * mDefSkillMultiplier(skillsList));
       const dmg =
         dmgMultiplier *
+        damageMultiplierFactor *
         92 *
         Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) *
         Math.max(0, skillPower) /
         (Math.max(1, mdef));
-      const hits = dmg > 0 && hp > 0 ? Math.ceil(hp / dmg) : Infinity;
+      const effectiveHp = Math.max(0, hp - Math.min(hp, remainingMonsterHp));
+      const hits = dmg > 0 && hp > 0 ? Math.max(1, Math.ceil(effectiveHp / dmg)) : Infinity;
+      const remainingHp = hits && isFinite(hits) ? Math.max(0, hp - hits * dmg) : hp;
       const expPerHit = hits && isFinite(hits) ? exp / hits : 0;
       const adenaDrop = drops.find((drop) => drop.itemId === ADENA_ITEM_ID);
       const adena = adenaDrop ? ((adenaDrop.min + adenaDrop.max) / 2) * adenaDrop.chance : 0;
@@ -447,6 +466,7 @@ export default function Calculator() {
         mdef,
         dmg,
         hits,
+        remainingHp,
         exp,
         expPerHit,
         adena,
@@ -456,7 +476,7 @@ export default function Calculator() {
         netAdenaPerKill,
       };
     },
-    [resolveDrops, element, matk, shot, skillPower, ssPrice, bssPrice, hasHerbDrop],
+    [resolveDrops, element, matk, shot, skillPower, ssPrice, bssPrice, hasHerbDrop, damageMultiplier, remainingMonsterHp],
   );
 
   const selectedDrops = useMemo(() => (selectedNpc ? resolveDrops(selectedNpc) : []), [selectedNpc, resolveDrops]);
@@ -465,15 +485,15 @@ export default function Calculator() {
 
   const selectedLocationStats = useMemo(() => {
     if (!selectedLocation) return [];
-    const entries = monsters
+    const entries = eligibleMonsters
       .filter((monster) => monster.locations?.some((loc) => loc.id === selectedLocation.id))
       .map((monster) => calculate(monster));
     return entries.sort((a, b) => b.netAdenaPerKill - a.netAdenaPerKill);
-  }, [selectedLocation, monsters, calculate]);
+  }, [selectedLocation, eligibleMonsters, calculate]);
 
   const suggestedMonsters = useMemo(() => {
     const results: MonsterCalculation[] = [];
-    for (const monster of monsters) {
+    for (const monster of eligibleMonsters) {
       const level = monster.level;
       if (level < suggestedMinLevel || level > suggestedMaxLevel) continue;
       const result = calculate(monster);
@@ -487,7 +507,7 @@ export default function Calculator() {
       results.sort((a, b) => b.expPerHit - a.expPerHit);
     }
     return results.slice(0, 32);
-  }, [monsters, suggestedMinLevel, suggestedMaxLevel, suggestedHerbs, suggestedMaxHits, suggestedOptimisation, calculate]);
+  }, [eligibleMonsters, suggestedMinLevel, suggestedMaxLevel, suggestedHerbs, suggestedMaxHits, suggestedOptimisation, calculate]);
 
   const locationAggregates = useMemo(() => {
     const groups: Record<number, LocationAggregate> = {};
@@ -684,7 +704,7 @@ export default function Calculator() {
                 <div className="text-sm font-semibold">Farming inputs</div>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="matk">M. Atk</Label>
                     <Input id="matk" type="number" value={matk} onChange={(e) => setMatk(toNum(e.target.value, 0))} />
@@ -724,12 +744,37 @@ export default function Calculator() {
                     </Select>
                   </div>
                   <div className="flex flex-col gap-2">
+                    <Label htmlFor="damageMultiplier">Damage multiplier (%)</Label>
+                    <Input
+                      id="damageMultiplier"
+                      type="number"
+                      min={20}
+                      max={180}
+                      value={damageMultiplier}
+                      onChange={(e) =>
+                        setDamageMultiplier(clamp(toNum(e.target.value, 100), 20, 180))
+                      }
+                    />
+                    <div className="text-xs text-neutral-500">Applies to final damage (20-180%).</div>
+                  </div>
+                  <div className="flex flex-col gap-2">
                     <Label htmlFor="ssPrice">SS price per hit</Label>
                     <Input id="ssPrice" type="number" value={ssPrice} onChange={(e) => setSsPrice(toNum(e.target.value, 0))} />
                   </div>
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="bssPrice">BSS price per hit</Label>
                     <Input id="bssPrice" type="number" value={bssPrice} onChange={(e) => setBssPrice(toNum(e.target.value, 0))} />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="remainingHp">Remaining monster HP</Label>
+                    <Input
+                      id="remainingHp"
+                      type="number"
+                      min={0}
+                      value={remainingMonsterHp}
+                      onChange={(e) => setRemainingMonsterHp(Math.max(0, toNum(e.target.value, 0)))}
+                    />
+                    <div className="text-xs text-neutral-500">Allowed HP left after hits.</div>
                   </div>
                 </div>
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -761,6 +806,10 @@ export default function Calculator() {
                     <Checkbox id="herbs" checked={suggestedHerbs} onCheckedChange={(checked) => setSuggestedHerbs(checked === true)} />
                     <Label htmlFor="herbs" className="text-sm">Only show herb drop monsters</Label>
                   </div>
+                  <div className="flex items-center gap-2 md:col-span-2">
+                    <Checkbox id="undeadOnly" checked={undeadOnly} onCheckedChange={(checked) => setUndeadOnly(checked === true)} />
+                    <Label htmlFor="undeadOnly" className="text-sm">Undead only</Label>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -784,7 +833,7 @@ export default function Calculator() {
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <div className="text-sm font-semibold">Search NPC or location</div>
-                        <div className="text-xs text-neutral-500">{monsters.length.toLocaleString()} NPCs • {locations.length.toLocaleString()} locations</div>
+                        <div className="text-xs text-neutral-500">{eligibleMonsters.length.toLocaleString()} NPCs • {locations.length.toLocaleString()} locations</div>
                       </div>
                     </CardHeader>
                     <CardContent>
@@ -909,6 +958,10 @@ export default function Calculator() {
                                       <div className="text-sm font-medium">{entry.dmg.toFixed(0)}</div>
                                     </div>
                                     <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                      <div className="text-neutral-500">HP left after hits</div>
+                                      <div className="text-sm font-medium">{entry.remainingHp.toFixed(0)}</div>
+                                    </div>
+                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
                                       <div className="text-neutral-500">Exp</div>
                                       <div className="text-sm font-medium">{entry.exp.toLocaleString()}</div>
                                     </div>
@@ -994,6 +1047,10 @@ export default function Calculator() {
                             <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
                               <div className="text-xs text-neutral-500">Hits to kill</div>
                               <div className="font-medium">{isFinite(hitsPerKill) ? hitsPerKill : '∞'}</div>
+                            </div>
+                            <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
+                              <div className="text-xs text-neutral-500">HP left after hits</div>
+                              <div className="font-medium">{currentStats.remainingHp.toFixed(0)}</div>
                             </div>
                             <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
                               <div className="text-xs text-neutral-500">Exp</div>
