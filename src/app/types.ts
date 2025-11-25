@@ -44,6 +44,7 @@ type Monster = {
   npc_id: number;
   name: string;
   level: number;
+  race?: string;
   exp: number;
   acquire_sp: number;
   org_hp: number;
