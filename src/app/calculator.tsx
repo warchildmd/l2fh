@@ -884,14 +884,7 @@ export default function Calculator() {
                                 >
                                   <div className="flex items-center justify-between">
                                     <span className="flex items-center gap-2">
-                                      {entry.type === 'monster' ? (
-                                        <>
-                                          {entry.monster.name}
-                                          <WikiLink id={entry.monster.npc_id} />
-                                        </>
-                                      ) : (
-                                        entry.location.name
-                                      )}
+                                      {entry.type === 'monster' ? entry.monster.name : entry.location.name}
                                     </span>
                                     <span className="text-xs text-neutral-500">
                                       {entry.type === 'monster' ? `Lv ${entry.monster.level || '-'}` : 'Location'}
