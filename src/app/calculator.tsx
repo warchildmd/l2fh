@@ -17,6 +17,20 @@ import {
 } from '@/lib/formulas';
 
 const ADENA_ITEM_ID = 57;
+const WIKI_BASE_URL = 'https://lineage2wiki.org/c5/monster';
+
+function WikiLink({id}: {id: number}) {
+  return (
+    <a
+      href={`${WIKI_BASE_URL}/${id}`}
+      target="_blank"
+      rel="noreferrer"
+      className="text-indigo-500 text-xs font-medium"
+    >
+      wiki
+    </a>
+  );
+}
 
 type ResolvedDrop = {
   itemId: number;
@@ -869,7 +883,16 @@ export default function Calculator() {
                                   }`}
                                 >
                                   <div className="flex items-center justify-between">
-                                    <span>{entry.type === 'monster' ? entry.monster.name : entry.location.name}</span>
+                                    <span className="flex items-center gap-2">
+                                      {entry.type === 'monster' ? (
+                                        <>
+                                          {entry.monster.name}
+                                          <WikiLink id={entry.monster.npc_id} />
+                                        </>
+                                      ) : (
+                                        entry.location.name
+                                      )}
+                                    </span>
                                     <span className="text-xs text-neutral-500">
                                       {entry.type === 'monster' ? `Lv ${entry.monster.level || '-'}` : 'Location'}
                                     </span>
@@ -928,7 +951,10 @@ export default function Calculator() {
                                 >
                                   <div className="flex items-start justify-between gap-3">
                                     <div>
-                                      <div className="text-sm font-semibold">{entry.monster.name}</div>
+                                      <div className="text-sm font-semibold flex items-center gap-2">
+                                        {entry.monster.name}
+                                        <WikiLink id={entry.monster.npc_id} />
+                                      </div>
                                       <div className="text-xs text-neutral-500">
                                         Level {entry.monster.level || '-'} • ID {entry.monster.npc_id}
                                       </div>
@@ -1013,13 +1039,7 @@ export default function Calculator() {
                             <div className="text-lg font-medium flex items-center gap-3">
                               {selectedNpc.name}
                               <small>
-                                <a
-                                  href={`https://lineage2wiki.org/interlude/monster/${selectedNpc.npc_id}`}
-                                  target="_blank"
-                                  className="text-indigo-500"
-                                >
-                                  wiki
-                                </a>
+                                <WikiLink id={selectedNpc.npc_id} />
                               </small>
                             </div>
                             <div className="text-xs text-neutral-500">
@@ -1115,7 +1135,10 @@ export default function Calculator() {
                           <div key={entry.monster.npc_id} className="rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-neutral-900 p-4 space-y-3">
                             <div className="flex items-start justify-between gap-3">
                               <div>
-                                <div className="text-sm font-semibold">{entry.monster.name}</div>
+                                <div className="text-sm font-semibold flex items-center gap-2">
+                                  {entry.monster.name}
+                                  <WikiLink id={entry.monster.npc_id} />
+                                </div>
                                 <div className="text-xs text-neutral-500">Level {entry.monster.level || '-'} • Hits {isFinite(entry.hits) ? entry.hits : '∞'}</div>
                               </div>
                               <div className="text-right">
@@ -1202,7 +1225,16 @@ export default function Calculator() {
                                 </div>
                                 <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
                                   <div className="text-neutral-500">Top monster</div>
-                                  <div className="text-sm font-medium">{bestMonster?.monster.name || '–'}</div>
+                                  <div className="text-sm font-medium flex items-center gap-2">
+                                    {bestMonster ? (
+                                      <>
+                                        {bestMonster.monster.name}
+                                        <WikiLink id={bestMonster.monster.npc_id} />
+                                      </>
+                                    ) : (
+                                      '–'
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
                                   <div className="text-neutral-500">Top net adena</div>
@@ -1213,7 +1245,10 @@ export default function Calculator() {
                               {topMonsters.map((entry) => (
                                 <div key={entry.monster.npc_id} className="flex items-center justify-between text-sm">
                                   <div>
-                                    <div className="font-medium">{entry.monster.name}</div>
+                                    <div className="font-medium flex items-center gap-2">
+                                      {entry.monster.name}
+                                      <WikiLink id={entry.monster.npc_id} />
+                                    </div>
                                     <div className="text-xs text-neutral-500">Lv {entry.monster.level} • Net {entry.netAdenaPerKill.toFixed(1)}</div>
                                   </div>
                                   <button
@@ -1259,17 +1294,18 @@ export default function Calculator() {
                         <div className="text-sm text-neutral-500">No NPCs yet. Add one from any tab.</div>
                       ) : (
                         <div className="space-y-2 text-sm">
-                          {active.map((entry) => {
-                            const details = activeDetailsMap[entry.id];
-                            return (
-                              <div key={entry.id} className="flex flex-wrap items-center gap-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="truncate font-medium" title={entry.name}>
-                                    {entry.name}
-                                  </div>
-                                  {details ? (
-                                    <div className="text-xs text-neutral-500 truncate">
-                                      Level {details.monster.level || '-'} • Exp {details.stats.exp.toLocaleString()} • Adena{' '}
+                              {active.map((entry) => {
+                                const details = activeDetailsMap[entry.id];
+                                return (
+                                  <div key={entry.id} className="flex flex-wrap items-center gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="truncate font-medium flex items-center gap-2" title={entry.name}>
+                                        <span className="truncate">{entry.name}</span>
+                                        <WikiLink id={entry.id} />
+                                      </div>
+                                      {details ? (
+                                        <div className="text-xs text-neutral-500 truncate">
+                                          Level {details.monster.level || '-'} • Exp {details.stats.exp.toLocaleString()} • Adena{' '}
                                       {details.stats.adena.toFixed(1)}
                                     </div>
                                   ) : (
