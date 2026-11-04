@@ -22,7 +22,20 @@ import {
   chooseChronicle,
   useChronicleId,
 } from '@/lib/chronicles';
-import type {Chronicle, ChronicleId, Element} from '@/lib/chronicles';
+import type {Chronicle, ChronicleId, Element, Weapon} from '@/lib/chronicles';
+import {
+  WEAPONS,
+  attackIntervalMs,
+  attacksThatLand,
+  createAttackEstimator,
+  critChance,
+  hitChance,
+  hitsPerAttack,
+  monsterEvasion,
+  monsterPdef,
+  physicalDamage,
+  weaponMultiplier,
+} from '@/lib/physical';
 
 const ADENA_ITEM_ID = 57;
 
@@ -35,6 +48,18 @@ const ELEMENT_LABELS: Record<Element, string> = {
   holy: 'Holy',
   dark: 'Dark',
 };
+
+const WEAPON_LABELS: Record<Weapon, string> = {
+  sword: 'Sword',
+  blunt: 'Blunt',
+  dagger: 'Dagger',
+  pole: 'Pole',
+  bow: 'Bow',
+  dual: 'Dual swords',
+  fist: 'Fist',
+};
+
+type ClassType = 'magical' | 'physical';
 
 function WikiLink({base, id}: {base: string; id: number}) {
   return (
@@ -60,10 +85,18 @@ type ResolvedDrop = {
   etcItemType?: string;
 };
 
+type PhysicalStats = {
+  hitChance: number;
+  critChance: number;
+  secondsPerKill: number;
+  expPerSecond: number;
+  netAdenaPerSecond: number;
+};
+
 type MonsterCalculation = {
   monster: Monster;
   hp: number;
-  mdef: number;
+  defense: number;
   dmg: number;
   hits: number;
   remainingHp: number;
@@ -74,6 +107,8 @@ type MonsterCalculation = {
   herbs: boolean;
   shotCostPerKill: number;
   netAdenaPerKill: number;
+  // Null in magical mode.
+  physical: PhysicalStats | null;
 };
 
 type ActiveEntry = { id: number; name: string; rate: number };
@@ -95,6 +130,7 @@ type LocationAggregate = {
   avgAdenaPerHit: number;
   avgNetAdenaPerKill: number;
   avgHits: number;
+  avgSecondsPerKill: number;
   monsters: MonsterCalculation[];
 };
 
@@ -136,6 +172,7 @@ type RawMonster = {
   ground_high?: string;
   acquire_exp_rate?: string | number;
   mdef?: string | number;
+  pdef?: string | number;
   locations?: Array<string | number>;
   items?: RawDrop[];
   skills?: RawMonsterSkill[];
@@ -163,25 +200,50 @@ function shotMultiplier(s: 'none' | 'ss' | 'bss') {
   return s === 'none' ? 1 : s === 'ss' ? 2 : 4;
 }
 
+// Skill 4413, from the wiki. Level 10 is 0.9 rather than the wiki's 0.91, because levels
+// 10-12 were tuned against in-game hits. The other levels haven't been checked in-game.
+const M_DEF_SKILL_MULTIPLIERS = [
+  0.39, 0.43, 0.47, 0.52, 0.57, 0.63, 0.69, 0.76, 0.83, 0.9, 1, 1.1, 1.21, 1.33, 1.46, 1.61, 1.77, 1.94, 2.14, 2.35, 2.59, 10,
+];
+
 function mDefSkillMultiplier(skills: MonsterSkill[]): number {
-  const multipliers = [
-    -0.15, -0.135, -0.12, -0.1, -0.08, -0.07, -0.06, -0.04, -0.03, -0.1,
-    0.0, 0.1, 0.03, 0.04, 0.06, 0.08, 0.1, 0.12, 0.135, 0.15, 0.165,
-  ];
   const skill = skills.find((s) => s.skill_id === 4413);
   if (!skill) return 1;
-  const idx = Math.max(0, Math.min(multipliers.length - 1, skill.level - 1));
-  return 1 + multipliers[idx];
+  return M_DEF_SKILL_MULTIPLIERS[clamp(skill.level - 1, 0, M_DEF_SKILL_MULTIPLIERS.length - 1)];
 }
 
 function elementMultiplierFor(chronicle: Chronicle, element: Element, skills: MonsterSkill[]): number {
-  const targets = chronicle.weaknessSkills[element] ?? [];
-  return skills.some((s) => targets.includes(s.skill_id)) ? 1.11 : 1;
+  const multipliers = chronicle.elementSkills[element] ?? {};
+  return skills.reduce((total, skill) => total * (multipliers[skill.skill_id] ?? 1), 1);
 }
 
-function elementResistFor(chronicle: Chronicle, element: Element, skills: MonsterSkill[]): number {
-  const targets = chronicle.resistSkills[element] ?? [];
-  return skills.some((s) => targets.includes(s.skill_id)) ? 0.9 : 1;
+function chronicleMDefMultiplier(chronicle: Chronicle, skills: MonsterSkill[]): number {
+  return skills.reduce((total, skill) => total * (chronicle.mDefSkills[skill.skill_id] ?? 1), 1);
+}
+
+function formatHits(hits: number): string {
+  if (!isFinite(hits)) return '∞';
+  return Number.isInteger(hits) ? String(hits) : hits.toFixed(2);
+}
+
+function formatSeconds(seconds: number): string {
+  return isFinite(seconds) ? `${seconds.toFixed(1)}s` : '∞';
+}
+
+function PhysicalTiles({stats, padding}: {stats: PhysicalStats; padding: string}) {
+  const tiles = [
+    ['Seconds/kill', formatSeconds(stats.secondsPerKill)],
+    ['Hit chance', `${(stats.hitChance * 100).toFixed(0)}%`],
+    ['Crit chance', `${(stats.critChance * 100).toFixed(1)}%`],
+    ['Exp/sec', stats.expPerSecond.toFixed(1)],
+    ['Net adena/sec', stats.netAdenaPerSecond.toFixed(1)],
+  ];
+  return tiles.map(([label, value]) => (
+    <div key={label} className={`rounded-md bg-neutral-50 dark:bg-neutral-800/50 ${padding}`}>
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div className="text-sm font-medium">{value}</div>
+    </div>
+  ));
 }
 
 function useDebounced<T>(value: T, delay = 200): T {
@@ -210,6 +272,7 @@ export default function Calculator() {
   const [skills, setSkills] = useState<Skill[]>([]);
 
   // Inputs
+  const [classType, setClassType] = useState<ClassType>('magical');
   const [matk, setMatk] = useState<number>(140);
   const [skillPower, setSkillPower] = useState<number>(26);
   const [shot, setShot] = useState<'none' | 'ss' | 'bss'>('none');
@@ -217,6 +280,17 @@ export default function Calculator() {
   const [damageMultiplier, setDamageMultiplier] = useState<number>(100);
   const [ssPrice, setSsPrice] = useState<number>(24);
   const [bssPrice, setBssPrice] = useState<number>(52);
+  const [patk, setPatk] = useState<number>(200);
+  const [atkSpeed, setAtkSpeed] = useState<number>(300);
+  const [accuracy, setAccuracy] = useState<number>(60);
+  const [critical, setCritical] = useState<number>(44);
+  const [critMultiplier, setCritMultiplier] = useState<number>(2);
+  const [weapon, setWeapon] = useState<Weapon>('sword');
+  const [soulshot, setSoulshot] = useState<boolean>(false);
+  const [soulshotPrice, setSoulshotPrice] = useState<number>(20);
+  const [shotsPerAttack, setShotsPerAttack] = useState<number>(1);
+  const [arrowPrice, setArrowPrice] = useState<number>(5);
+  const [bowReuse, setBowReuse] = useState<number>(1500);
   const [remainingMonsterHp, setRemainingMonsterHp] = useState<number>(0);
   const [expRate, setExpRate] = useState<number>(1);
   const [spRate, setSpRate] = useState<number>(1);
@@ -232,6 +306,8 @@ export default function Calculator() {
 
   // Suggestion inputs
   const [suggestedMaxHits, setSuggestedMaxHits] = useState<number>(1);
+  // Separate from the mage default: average attacks is always above 1.
+  const [physicalMaxHits, setPhysicalMaxHits] = useState<number>(10);
   const [suggestedOptimisation, setSuggestedOptimisation] = useState<'exp' | 'adena'>('exp');
   const [suggestedHerbs, setSuggestedHerbs] = useState<boolean>(true);
   const [suggestedMinLevel, setSuggestedMinLevel] = useState<number>(1);
@@ -250,7 +326,8 @@ export default function Calculator() {
     async function fetchWithProgress(url: string, onStage: (s: string) => void, base: number, span: number): Promise<unknown> {
       onStage(`Fetching ${url}...`);
       try {
-        const res = await fetch(url, {cache: 'force-cache'});
+        // Revalidates, so a rebuilt data file reaches returning visitors.
+        const res = await fetch(url, {cache: 'no-cache'});
         if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
         const len = Number(res.headers.get('Content-Length') || '0');
         if (res.body && len > 0 && 'getReader' in res.body) {
@@ -350,6 +427,7 @@ export default function Calculator() {
           ground_high: String(monster.ground_high ?? ''),
           acquire_exp_rate: toNum(monster.acquire_exp_rate),
           mdef: monster.mdef == null ? undefined : toNum(monster.mdef),
+          pdef: monster.pdef == null ? undefined : toNum(monster.pdef),
           skills: (monster.skills ?? []).map((skill) => ({
             skill_id: toNum(skill?.skill_id),
             level: toNum(skill?.level, 1),
@@ -474,29 +552,74 @@ export default function Calculator() {
     [isHerbItem],
   );
 
+  const estimateAttacks = useMemo(() => createAttackEstimator(critChance(critical), critMultiplier), [critical, critMultiplier]);
+
   const calculate = useCallback(
     (monster: Monster): MonsterCalculation => {
       const drops = resolveDrops(monster);
       const skillsList = monster.skills || [];
       const hpRateSkill = getMonsterHpRate(monster);
       const hpMultiplier = hpRateSkill ? Math.max(0, getMonsterHpRateValue(hpRateSkill)) : 1;
-      const dmgMultiplier = elementMultiplierFor(chronicle, element, skillsList) * elementResistFor(chronicle, element, skillsList);
       const damageMultiplierFactor = clamp(damageMultiplier, 20, 180) / 100;
 
       const exp = Math.round(getMonsterExp(monster) * expRate);
       const hp = Math.round(monster.org_hp * (hpMultiplier || 1));
+      const effectiveHp = Math.max(0, hp - Math.min(hp, remainingMonsterHp));
+      const adenaDrop = drops.find((drop) => drop.itemId === ADENA_ITEM_ID);
+      const adena = adenaDrop ? ((adenaDrop.min + adenaDrop.max) / 2) * adenaDrop.chance : 0;
+      const herbs = hasHerbDrop(drops);
+
+      if (classType === 'physical') {
+        const defense = monsterPdef(chronicle, monster);
+        const hitsInAttack = hitsPerAttack(weapon);
+        const hitRate = hitChance(accuracy, monsterEvasion(monster));
+        const dmg =
+          (physicalDamage(patk, soulshot, defense) * weaponMultiplier(chronicle, weapon, skillsList) * damageMultiplierFactor) /
+          hitsInAttack;
+        const normalHits = dmg > 0 && hp > 0 ? Math.max(1, Math.ceil(effectiveHp / dmg)) : Infinity;
+        const hits = isFinite(normalHits) ? estimateAttacks(normalHits, hitRate, hitsInAttack) : Infinity;
+        const killable = isFinite(hits);
+        const shotCost = soulshot ? attacksThatLand(hits, hitRate, hitsInAttack) * shotsPerAttack * soulshotPrice : 0;
+        const arrowCost = weapon === 'bow' ? hits * arrowPrice : 0;
+        const shotCostPerKill = killable ? shotCost + arrowCost : 0;
+        const netAdenaPerKill = adena - shotCostPerKill;
+        const secondsPerKill = (hits * attackIntervalMs(weapon, atkSpeed, bowReuse)) / 1000;
+        const hasKillTime = isFinite(secondsPerKill) && secondsPerKill > 0;
+
+        return {
+          monster,
+          hp,
+          defense,
+          dmg,
+          hits,
+          remainingHp: 0,
+          exp,
+          expPerHit: killable ? exp / hits : 0,
+          adena,
+          adenaPerHit: killable ? adena / hits : 0,
+          herbs,
+          shotCostPerKill,
+          netAdenaPerKill,
+          physical: {
+            hitChance: hitRate,
+            critChance: critChance(critical),
+            secondsPerKill,
+            expPerSecond: hasKillTime ? exp / secondsPerKill : 0,
+            netAdenaPerSecond: hasKillTime ? netAdenaPerKill / secondsPerKill : 0,
+          },
+        };
+      }
+
+      const dmgMultiplier = elementMultiplierFor(chronicle, element, skillsList);
       const baseMdef = monster.mdef ?? calcMdef(monster);
-      const mdef = Math.round(baseMdef * mDefSkillMultiplier(skillsList));
+      const defense = Math.round(baseMdef * mDefSkillMultiplier(skillsList) * chronicleMDefMultiplier(chronicle, skillsList));
       const dmg =
         dmgMultiplier *
         damageMultiplierFactor *
-        chronicle.magicDamage({matk, shotMultiplier: shotMultiplier(shot), skillPower, mdef});
-      const effectiveHp = Math.max(0, hp - Math.min(hp, remainingMonsterHp));
+        chronicle.magicDamage({matk, shotMultiplier: shotMultiplier(shot), skillPower, mdef: defense});
       const hits = dmg > 0 && hp > 0 ? Math.max(1, Math.ceil(effectiveHp / dmg)) : Infinity;
       const remainingHp = hits && isFinite(hits) ? Math.max(0, hp - hits * dmg) : hp;
       const expPerHit = hits && isFinite(hits) ? exp / hits : 0;
-      const adenaDrop = drops.find((drop) => drop.itemId === ADENA_ITEM_ID);
-      const adena = adenaDrop ? ((adenaDrop.min + adenaDrop.max) / 2) * adenaDrop.chance : 0;
       const adenaPerHit = hits && isFinite(hits) ? adena / hits : 0;
       const shotPrice = shot === 'none' ? 0 : shot === 'ss' ? ssPrice : bssPrice;
       const shotCostPerKill = hits && isFinite(hits) ? hits * shotPrice : Infinity;
@@ -505,7 +628,7 @@ export default function Calculator() {
       return {
         monster,
         hp,
-        mdef,
+        defense,
         dmg,
         hits,
         remainingHp,
@@ -513,12 +636,17 @@ export default function Calculator() {
         expPerHit,
         adena,
         adenaPerHit,
-        herbs: hasHerbDrop(drops),
+        herbs,
         shotCostPerKill: isFinite(shotCostPerKill) ? shotCostPerKill : 0,
         netAdenaPerKill,
+        physical: null,
       };
     },
-    [chronicle, resolveDrops, element, matk, shot, skillPower, ssPrice, bssPrice, hasHerbDrop, damageMultiplier, remainingMonsterHp, expRate],
+    [
+      chronicle, classType, resolveDrops, element, matk, shot, skillPower, ssPrice, bssPrice, hasHerbDrop, damageMultiplier,
+      remainingMonsterHp, expRate, patk, atkSpeed, accuracy, critical, weapon, soulshot, soulshotPrice, shotsPerAttack,
+      arrowPrice, bowReuse, estimateAttacks,
+    ],
   );
 
   const selectedDrops = useMemo(() => (selectedNpc ? resolveDrops(selectedNpc) : []), [selectedNpc, resolveDrops]);
@@ -533,6 +661,8 @@ export default function Calculator() {
     return entries.sort((a, b) => b.netAdenaPerKill - a.netAdenaPerKill);
   }, [selectedLocation, eligibleMonsters, calculate]);
 
+  const maxHits = classType === 'physical' ? physicalMaxHits : suggestedMaxHits;
+
   const suggestedMonsters = useMemo(() => {
     const results: MonsterCalculation[] = [];
     for (const monster of eligibleMonsters) {
@@ -540,7 +670,7 @@ export default function Calculator() {
       if (level < suggestedMinLevel || level > suggestedMaxLevel) continue;
       const result = calculate(monster);
       if (chronicle.hasHerbs && suggestedHerbs && !result.herbs) continue;
-      if (isFinite(result.hits) && result.hits > suggestedMaxHits) continue;
+      if (isFinite(result.hits) && result.hits > maxHits) continue;
       results.push(result);
     }
     if (suggestedOptimisation === 'adena') {
@@ -549,7 +679,7 @@ export default function Calculator() {
       results.sort((a, b) => b.expPerHit - a.expPerHit);
     }
     return results.slice(0, 32);
-  }, [chronicle, eligibleMonsters, suggestedMinLevel, suggestedMaxLevel, suggestedHerbs, suggestedMaxHits, suggestedOptimisation, calculate]);
+  }, [chronicle, eligibleMonsters, suggestedMinLevel, suggestedMaxLevel, suggestedHerbs, maxHits, suggestedOptimisation, calculate]);
 
   const locationAggregates = useMemo(() => {
     const groups: Record<number, LocationAggregate> = {};
@@ -564,6 +694,7 @@ export default function Calculator() {
             avgAdenaPerHit: 0,
             avgNetAdenaPerKill: 0,
             avgHits: 0,
+            avgSecondsPerKill: 0,
             monsters: [],
           };
         }
@@ -573,6 +704,7 @@ export default function Calculator() {
         group.avgAdenaPerHit += entry.adenaPerHit;
         group.avgNetAdenaPerKill += entry.netAdenaPerKill;
         group.avgHits += entry.hits;
+        group.avgSecondsPerKill += entry.physical?.secondsPerKill ?? 0;
         group.monsters.push(entry);
       }
     }
@@ -583,12 +715,15 @@ export default function Calculator() {
         avgAdenaPerHit: group.monsterCount ? group.avgAdenaPerHit / group.monsterCount : 0,
         avgNetAdenaPerKill: group.monsterCount ? group.avgNetAdenaPerKill / group.monsterCount : 0,
         avgHits: group.monsterCount ? group.avgHits / group.monsterCount : 0,
+        avgSecondsPerKill: group.monsterCount ? group.avgSecondsPerKill / group.monsterCount : 0,
       }))
       .sort((a, b) => b.avgNetAdenaPerKill - a.avgNetAdenaPerKill)
       .slice(0, 16);
   }, [suggestedMonsters]);
 
   const hitsPerKill = currentStats?.hits ?? 0;
+  const isPhysical = classType === 'physical';
+  const defenseLabel = isPhysical ? 'P.Def' : 'M.Def';
   const perKillShotCost = currentStats?.shotCostPerKill ?? 0;
 
   const handleSearchSelection = useCallback(
@@ -654,6 +789,7 @@ export default function Calculator() {
     if (activeDetails.length === 0) return null;
     let adenaPerKill = 0;
     let shotCostPerKill = 0;
+    let secondsPerKill = 0;
     const itemExpectedPerKill: Record<number, {name: string; expectedQty: number; isHerb: boolean}> = {};
 
     for (const entry of activeDetails) {
@@ -662,6 +798,7 @@ export default function Calculator() {
       const drops = entry.drops;
       adenaPerKill += stats.adena * weight;
       shotCostPerKill += stats.shotCostPerKill * weight;
+      secondsPerKill += (stats.physical?.secondsPerKill ?? 0) * weight;
       for (const drop of drops) {
         if (drop.spoil > 0) continue;
         const avgQty = (drop.min + drop.max) / 2;
@@ -704,6 +841,8 @@ export default function Calculator() {
       grossAdenaForSet,
       shotCostForSet,
       netAdenaForSet,
+      secondsPerKill,
+      secondsForSet: secondsPerKill * safeTotal,
       normalDrops,
       herbDrops,
     };
@@ -714,7 +853,7 @@ export default function Calculator() {
       <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
         <header className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h1 className="text-2xl font-semibold tracking-tight">L2Reborn Mage Farm Helper</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">L2Reborn Farm Helper</h1>
             <div className="text-xs text-neutral-500">created by <b>Thanos</b> (L2Reborn Legacy) • shadcn/ui • Next.js</div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -728,12 +867,10 @@ export default function Calculator() {
                 ))}
               </SelectContent>
             </Select>
-            <Tabs value="magical">
+            <Tabs value={classType} onValueChange={(value) => setClassType(value as ClassType)}>
               <TabsList aria-label="Class type">
                 <TabsTrigger value="magical">Magical</TabsTrigger>
-                <span title="Coming soon">
-                  <TabsTrigger value="physical" disabled>Physical</TabsTrigger>
-                </span>
+                <TabsTrigger value="physical">Physical</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
@@ -766,7 +903,11 @@ export default function Calculator() {
             <Card>
               <CardHeader>
                 <div className="text-sm font-semibold">Farming inputs</div>
-                {!chronicle.damageVerified && (
+                {isPhysical ? (
+                  <div className="text-xs text-amber-700 dark:text-amber-400">
+                    Physical results are averages for auto-attacks from the front, using L2J Mobius rules. They haven&apos;t been checked in-game yet.
+                  </div>
+                ) : !chronicle.damageVerified && (
                   <div className="text-xs text-amber-700 dark:text-amber-400">
                     Damage for {chronicle.label} uses the C5 formula and hasn&apos;t been checked in-game yet.
                   </div>
@@ -774,40 +915,114 @@ export default function Calculator() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="matk">M. Atk</Label>
-                    <Input id="matk" type="number" value={matk} onChange={(e) => setMatk(toNum(e.target.value, 0))} />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="skillPower">Skill power</Label>
-                    <Input id="skillPower" type="number" value={skillPower} onChange={(e) => setSkillPower(toNum(e.target.value, 0))} />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label>Shot type</Label>
-                    <Select value={shot} onValueChange={(value: 'none' | 'ss' | 'bss') => setShot(value)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select shot type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="ss">Spiritshots</SelectItem>
-                        <SelectItem value="bss">Blessed spiritshots</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label>Element</Label>
-                    <Select value={element} onValueChange={(value: Element) => setElement(value)}>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select element" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {chronicle.elements.map((value) => (
-                          <SelectItem key={value} value={value}>{ELEMENT_LABELS[value]}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {isPhysical ? (
+                    <>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="patk">P. Atk</Label>
+                        <Input id="patk" type="number" value={patk} onChange={(e) => setPatk(toNum(e.target.value, 0))} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="atkSpeed">Atk. Speed</Label>
+                        <Input id="atkSpeed" type="number" value={atkSpeed} onChange={(e) => setAtkSpeed(toNum(e.target.value, 0))} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="accuracy">Accuracy</Label>
+                        <Input id="accuracy" type="number" value={accuracy} onChange={(e) => setAccuracy(toNum(e.target.value, 0))} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="critical">Critical</Label>
+                        <Input id="critical" type="number" min={0} value={critical} onChange={(e) => setCritical(Math.max(0, toNum(e.target.value, 0)))} />
+                        <div className="text-xs text-neutral-500">From the status window: 44 is 4.4%.</div>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="critMultiplier">Crit damage (x)</Label>
+                        <Input
+                          id="critMultiplier"
+                          type="number"
+                          min={1}
+                          step={0.1}
+                          value={critMultiplier}
+                          onChange={(e) => setCritMultiplier(Math.max(1, toNum(e.target.value, 2)))}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label>Weapon</Label>
+                        <Select value={weapon} onValueChange={(value: Weapon) => setWeapon(value)}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select weapon" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {WEAPONS.map((value) => (
+                              <SelectItem key={value} value={value}>{WEAPON_LABELS[value]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox id="soulshot" checked={soulshot} onCheckedChange={(checked) => setSoulshot(checked === true)} />
+                        <Label htmlFor="soulshot" className="text-sm">Soulshots</Label>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="soulshotPrice">Soulshot price</Label>
+                        <Input id="soulshotPrice" type="number" min={0} value={soulshotPrice} onChange={(e) => setSoulshotPrice(Math.max(0, toNum(e.target.value, 0)))} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="shotsPerAttack">Shots per attack</Label>
+                        <Input id="shotsPerAttack" type="number" min={1} value={shotsPerAttack} onChange={(e) => setShotsPerAttack(Math.max(1, toNum(e.target.value, 1)))} />
+                        <div className="text-xs text-neutral-500">Depends on the weapon. A full miss uses none.</div>
+                      </div>
+                      {weapon === 'bow' && (
+                        <>
+                          <div className="flex flex-col gap-2">
+                            <Label htmlFor="arrowPrice">Arrow price</Label>
+                            <Input id="arrowPrice" type="number" min={0} value={arrowPrice} onChange={(e) => setArrowPrice(Math.max(0, toNum(e.target.value, 0)))} />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <Label htmlFor="bowReuse">Bow reuse (ms)</Label>
+                            <Input id="bowReuse" type="number" min={0} value={bowReuse} onChange={(e) => setBowReuse(Math.max(0, toNum(e.target.value, 0)))} />
+                            <div className="text-xs text-neutral-500">1500 for most bows, 820 for fast ones.</div>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="matk">M. Atk</Label>
+                        <Input id="matk" type="number" value={matk} onChange={(e) => setMatk(toNum(e.target.value, 0))} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="skillPower">Skill power</Label>
+                        <Input id="skillPower" type="number" value={skillPower} onChange={(e) => setSkillPower(toNum(e.target.value, 0))} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label>Shot type</Label>
+                        <Select value={shot} onValueChange={(value: 'none' | 'ss' | 'bss') => setShot(value)}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select shot type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            <SelectItem value="ss">Spiritshots</SelectItem>
+                            <SelectItem value="bss">Blessed spiritshots</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label>Element</Label>
+                        <Select value={element} onValueChange={(value: Element) => setElement(value)}>
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select element" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {chronicle.elements.map((value) => (
+                              <SelectItem key={value} value={value}>{ELEMENT_LABELS[value]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="damageMultiplier">Damage multiplier (%)</Label>
                     <Input
@@ -822,14 +1037,18 @@ export default function Calculator() {
                     />
                     <div className="text-xs text-neutral-500">Applies to final damage (20-180%).</div>
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="ssPrice">SS price per hit</Label>
-                    <Input id="ssPrice" type="number" value={ssPrice} onChange={(e) => setSsPrice(toNum(e.target.value, 0))} />
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="bssPrice">BSS price per hit</Label>
-                    <Input id="bssPrice" type="number" value={bssPrice} onChange={(e) => setBssPrice(toNum(e.target.value, 0))} />
-                  </div>
+                  {!isPhysical && (
+                    <>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="ssPrice">SS price per hit</Label>
+                        <Input id="ssPrice" type="number" value={ssPrice} onChange={(e) => setSsPrice(toNum(e.target.value, 0))} />
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <Label htmlFor="bssPrice">BSS price per hit</Label>
+                        <Input id="bssPrice" type="number" value={bssPrice} onChange={(e) => setBssPrice(toNum(e.target.value, 0))} />
+                      </div>
+                    </>
+                  )}
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="remainingHp">Remaining monster HP</Label>
                     <Input
@@ -858,7 +1077,12 @@ export default function Calculator() {
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="maxHits">Max hits</Label>
-                    <Input id="maxHits" type="number" value={suggestedMaxHits} onChange={(e) => setSuggestedMaxHits(toNum(e.target.value, 1))} />
+                    <Input
+                      id="maxHits"
+                      type="number"
+                      value={maxHits}
+                      onChange={(e) => (isPhysical ? setPhysicalMaxHits : setSuggestedMaxHits)(toNum(e.target.value, 1))}
+                    />
                   </div>
                   <div className="flex flex-col gap-2">
                     <Label htmlFor="optimiseFor">Optimise for</Label>
@@ -1025,7 +1249,7 @@ export default function Calculator() {
                                     </div>
                                     <div className="text-right">
                                       <div className="text-xs text-neutral-500">Hits</div>
-                                      <div className="text-sm font-medium">{isFinite(entry.hits) ? entry.hits : '∞'}</div>
+                                      <div className="text-sm font-medium">{formatHits(entry.hits)}</div>
                                     </div>
                                     <div className="text-right">
                                       <div className="text-xs text-neutral-500">Net adena</div>
@@ -1040,17 +1264,19 @@ export default function Calculator() {
                                       <div className="text-sm font-medium">{entry.hp.toLocaleString()}</div>
                                     </div>
                                     <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
-                                      <div className="text-neutral-500">M.Def</div>
-                                      <div className="text-sm font-medium">{entry.mdef.toLocaleString()}</div>
+                                      <div className="text-neutral-500">{defenseLabel}</div>
+                                      <div className="text-sm font-medium">{entry.defense.toLocaleString()}</div>
                                     </div>
                                     <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
                                       <div className="text-neutral-500">Damage</div>
                                       <div className="text-sm font-medium">{entry.dmg.toFixed(0)}</div>
                                     </div>
-                                    <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
-                                      <div className="text-neutral-500">HP left after hits</div>
-                                      <div className="text-sm font-medium">{entry.remainingHp.toFixed(0)}</div>
-                                    </div>
+                                    {!entry.physical && (
+                                      <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                        <div className="text-neutral-500">HP left after hits</div>
+                                        <div className="text-sm font-medium">{entry.remainingHp.toFixed(0)}</div>
+                                      </div>
+                                    )}
                                     <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
                                       <div className="text-neutral-500">Exp</div>
                                       <div className="text-sm font-medium">{entry.exp.toLocaleString()}</div>
@@ -1067,6 +1293,7 @@ export default function Calculator() {
                                       <div className="text-neutral-500">Adena/Hit</div>
                                       <div className="text-sm font-medium">{entry.adenaPerHit.toFixed(2)}</div>
                                     </div>
+                                    {entry.physical && <PhysicalTiles stats={entry.physical} padding="p-2" />}
                                   </div>
                                   <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
                                     <div>
@@ -1121,8 +1348,8 @@ export default function Calculator() {
                               <div className="font-medium">{currentStats.hp.toLocaleString()}</div>
                             </div>
                             <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
-                              <div className="text-xs text-neutral-500">M.Def</div>
-                              <div className="font-medium">{currentStats.mdef.toLocaleString()}</div>
+                              <div className="text-xs text-neutral-500">{defenseLabel}</div>
+                              <div className="font-medium">{currentStats.defense.toLocaleString()}</div>
                             </div>
                             <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
                               <div className="text-xs text-neutral-500">Damage</div>
@@ -1130,12 +1357,14 @@ export default function Calculator() {
                             </div>
                             <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
                               <div className="text-xs text-neutral-500">Hits to kill</div>
-                              <div className="font-medium">{isFinite(hitsPerKill) ? hitsPerKill : '∞'}</div>
+                              <div className="font-medium">{formatHits(hitsPerKill)}</div>
                             </div>
-                            <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
-                              <div className="text-xs text-neutral-500">HP left after hits</div>
-                              <div className="font-medium">{currentStats.remainingHp.toFixed(0)}</div>
-                            </div>
+                            {!currentStats.physical && (
+                              <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
+                                <div className="text-xs text-neutral-500">HP left after hits</div>
+                                <div className="font-medium">{currentStats.remainingHp.toFixed(0)}</div>
+                              </div>
+                            )}
                             <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
                               <div className="text-xs text-neutral-500">Exp</div>
                               <div className="font-medium">{currentStats.exp.toLocaleString()}</div>
@@ -1144,6 +1373,7 @@ export default function Calculator() {
                               <div className="text-xs text-neutral-500">SP</div>
                               <div className="font-medium">{Math.round(selectedNpc.acquire_sp * spRate).toLocaleString()}</div>
                             </div>
+                            {currentStats.physical && <PhysicalTiles stats={currentStats.physical} padding="p-3" />}
                           </div>
                           <div className="text-xs text-neutral-500">
                             Per kill shot cost: <span className="font-medium text-neutral-900 dark:text-neutral-100">{perKillShotCost.toFixed(0)} adena</span>
@@ -1203,7 +1433,7 @@ export default function Calculator() {
                                   {entry.monster.name}
                                   <WikiLink base={chronicle.wikiBaseUrl} id={entry.monster.npc_id} />
                                 </div>
-                                <div className="text-xs text-neutral-500">Level {entry.monster.level || '-'} • Hits {isFinite(entry.hits) ? entry.hits : '∞'}</div>
+                                <div className="text-xs text-neutral-500">Level {entry.monster.level || '-'} • Hits {formatHits(entry.hits)}</div>
                               </div>
                               <div className="text-right">
                                 <div className="text-xs text-neutral-500">Exp/Hit</div>
@@ -1214,14 +1444,14 @@ export default function Calculator() {
                                 <div className="text-sm font-medium text-indigo-600 dark:text-indigo-400">{entry.netAdenaPerKill.toFixed(1)}</div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className={`grid gap-2 text-xs ${isPhysical ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2'}`}>
                               <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
                                 <div className="text-neutral-500">HP</div>
                                 <div className="text-sm font-medium">{entry.hp.toLocaleString()}</div>
                               </div>
                               <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
-                                <div className="text-neutral-500">M.Def</div>
-                                <div className="text-sm font-medium">{entry.mdef.toLocaleString()}</div>
+                                <div className="text-neutral-500">{defenseLabel}</div>
+                                <div className="text-sm font-medium">{entry.defense.toLocaleString()}</div>
                               </div>
                               <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
                                 <div className="text-neutral-500">Adena/Hit</div>
@@ -1231,6 +1461,7 @@ export default function Calculator() {
                                 <div className="text-neutral-500">Shot cost</div>
                                 <div className="text-sm font-medium">{entry.shotCostPerKill.toFixed(1)}</div>
                               </div>
+                              {entry.physical && <PhysicalTiles stats={entry.physical} padding="p-2" />}
                             </div>
                             <div className="flex items-center justify-between">
                               <div className="text-xs text-neutral-500">Total Exp: {entry.exp.toFixed(0)}</div>
@@ -1283,6 +1514,12 @@ export default function Calculator() {
                                   <div className="text-neutral-500">Avg hits</div>
                                   <div className="text-sm font-medium">{location.avgHits.toFixed(1)}</div>
                                 </div>
+                                {isPhysical && (
+                                  <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
+                                    <div className="text-neutral-500">Avg seconds/kill</div>
+                                    <div className="text-sm font-medium">{formatSeconds(location.avgSecondsPerKill)}</div>
+                                  </div>
+                                )}
                                 <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-2">
                                   <div className="text-neutral-500">Avg Adena/Hit</div>
                                   <div className="text-sm font-medium">{location.avgAdenaPerHit.toFixed(2)}</div>
@@ -1447,6 +1684,18 @@ export default function Calculator() {
                               </div>
                             </div>
                           </div>
+                          {isPhysical && (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
+                                <div className="text-xs text-neutral-500">Seconds per monster</div>
+                                <div className="font-medium">{formatSeconds(setAggregates.secondsPerKill)}</div>
+                              </div>
+                              <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
+                                <div className="text-xs text-neutral-500">Attack time for set</div>
+                                <div className="font-medium">{(setAggregates.secondsForSet / 60).toFixed(1)} min</div>
+                              </div>
+                            </div>
+                          )}
                           <div className="space-y-4">
                             <div>
                               <div className="text-xs font-medium mb-1">Drops for set — expected quantities</div>

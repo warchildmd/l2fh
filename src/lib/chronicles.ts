@@ -4,6 +4,8 @@ export type ChronicleId = 'c1' | 'c2' | 'c5';
 
 export type Element = 'none' | 'fire' | 'water' | 'wind' | 'earth' | 'holy' | 'dark';
 
+export type Weapon = 'sword' | 'blunt' | 'dagger' | 'pole' | 'bow' | 'dual' | 'fist';
+
 export type MagicDamageInput = {
   matk: number;
   shotMultiplier: number;
@@ -18,10 +20,17 @@ export type Chronicle = {
   wikiBaseUrl: string;
   hasHerbs: boolean;
   elements: Element[];
-  // Monster traits are skills, and the IDs differ per chronicle. In C1 and C2 one
-  // skill can be both a resistance and a weakness.
-  weaknessSkills: Partial<Record<Element, number[]>>;
-  resistSkills: Partial<Record<Element, number[]>>;
+  // Monster traits are skills, and the IDs differ per chronicle. For each element,
+  // the damage multiplier a monster's skill applies. Several skills multiply.
+  elementSkills: Partial<Record<Element, Record<number, number>>>;
+  // M.Def multipliers from skills, on top of the monster's M.Def.
+  mDefSkills: Record<number, number>;
+  // Weapon traits as the wiki states them, one value per skill level: negative is a
+  // weakness, positive a resistance. A single value applies to every level.
+  weaponTraits: Partial<Record<Weapon, Record<number, number[]>>>;
+  // P.Def multipliers from passive skills, one per skill level, on top of the monster's
+  // P.Def. Active buffs such as 4029 are left out, because they aren't always up.
+  pDefSkills: Record<number, number[]>;
   magicDamage: (input: MagicDamageInput) => number;
   // False until the formula has been checked against in-game hits.
   damageVerified: boolean;
@@ -33,14 +42,30 @@ function c5MagicDamage({matk, shotMultiplier, skillPower, mdef}: MagicDamageInpu
 
 const EARLY_CHRONICLE = {
   hasHerbs: false,
-  elements: ['none', 'fire', 'water', 'wind', 'earth'] as Element[],
-  // 4013: resists Fire, weak to Water. 4014: resists Water, weak to Fire.
-  // 4015: resists Wind, weak to Earth.
-  weaknessSkills: {water: [4013], fire: [4014], earth: [4015]},
-  resistSkills: {fire: [4013], water: [4014], wind: [4015]},
+  elements: ['none', 'fire', 'water', 'wind', 'earth', 'holy'] as Element[],
+  // From the skill tooltips on lineage2wiki.org's C1 monster pages. They state
+  // resistance, so +50% is taken as x0.5 damage and -15% as x1.15.
+  elementSkills: {
+    fire: {4006: 1.15, 4008: 1.15, 4013: 0.5, 4014: 1.15, 4021: 1.5, 4062: 2},
+    water: {4013: 1.15, 4014: 0.5},
+    wind: {4005: 1.15, 4015: 0.5, 4122: 1.5},
+    earth: {4015: 1.15, 4122: 0.05},
+    holy: {4007: 1.2},
+  },
+  mDefSkills: {4116: 1.2},
+  // Same tooltips. 4003 Golem Body, 4004 Fragile Skull, 4005 Floating Target.
+  weaponTraits: {
+    bow: {4003: [70], 4005: [-10], 4021: [80], 4062: [80], 4071: [50]},
+    dagger: {4003: [30]},
+    blunt: {4003: [-10], 4004: [-10]},
+  },
+  pDefSkills: {4084: [1.2]},
   magicDamage: c5MagicDamage,
   damageVerified: false,
 };
+
+const STRONG_WEAKNESS = [-11, -25, -43, -67, -100];
+const STRONG_RESISTANCE = [15, 30, 50, 70, 90];
 
 export const CHRONICLES: Record<ChronicleId, Chronicle> = {
   c1: {
@@ -64,8 +89,28 @@ export const CHRONICLES: Record<ChronicleId, Chronicle> = {
     wikiBaseUrl: 'https://lineage2wiki.org/c5/monster',
     hasHerbs: true,
     elements: ['none', 'fire', 'water', 'wind', 'earth', 'holy', 'dark'],
-    weaknessSkills: {holy: [4275], fire: [4279], water: [4280], wind: [4281], earth: [4282], dark: [4336]},
-    resistSkills: {fire: [4009], water: [4010], wind: [4011], earth: [4012], dark: [4333]},
+    // Tested in-game. The wiki has no percentages for these in C5.
+    elementSkills: {
+      fire: {4279: 1.11, 4009: 0.9},
+      water: {4280: 1.11, 4010: 0.9},
+      wind: {4281: 1.11, 4011: 0.9},
+      earth: {4282: 1.11, 4012: 0.9},
+      holy: {4275: 1.11},
+      dark: {4336: 1.11, 4333: 0.9},
+    },
+    mDefSkills: {},
+    // From the skill pages on lineage2wiki.org. Dual swords have no trait skills.
+    weaponTraits: {
+      sword: {4460: STRONG_WEAKNESS},
+      blunt: {4274: [-11, -15, -20, -30, -50]},
+      dagger: {4461: STRONG_WEAKNESS, 4273: STRONG_RESISTANCE},
+      pole: {4458: STRONG_WEAKNESS, 4379: STRONG_RESISTANCE},
+      bow: {4276: [-10, -15, -20, -30, -50], 4071: [5, 10, 20, 30, 40], 4444: [60, 70, 80, 90, 100]},
+      fist: {4457: STRONG_WEAKNESS},
+    },
+    pDefSkills: {
+      4412: [0.39, 0.43, 0.47, 0.52, 0.57, 0.63, 0.69, 0.76, 0.83, 0.91, 1, 1.1, 1.21, 1.33, 1.46, 1.61, 1.77, 1.94, 2.14, 2.35, 2.59, 10],
+    },
     magicDamage: c5MagicDamage,
     damageVerified: true,
   },
