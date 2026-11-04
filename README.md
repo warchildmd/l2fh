@@ -13,23 +13,28 @@ A web-based farming calculator for Lineage 2 Reborn Classic (C5 era). The app in
 
 ## Getting started
 
-Prerequisites:
+Local development runs entirely in Docker, so Docker is the only prerequisite. Don't install Node.js or npm packages on your machine. Dependencies are kept in the `l2fh_node_modules` Docker volume.
 
-- Node.js 18.18+ (Node 20 LTS recommended)
-- npm (comes with Node.js)
-
-Install dependencies and start the dev server:
+Install dependencies:
 
 ```bash
-npm install
-npm run dev
+docker run --rm -v "$PWD":/app -v l2fh_node_modules:/app/node_modules -w /app node:24-bookworm-slim npm ci
 ```
 
-Then open http://localhost:3000 in your browser. To create an optimised production build use:
+Start the dev server:
 
 ```bash
-npm run build
-npm start
+docker run --rm -it -p 3000:3000 -v "$PWD":/app -v l2fh_node_modules:/app/node_modules -w /app node:24-bookworm-slim npm run dev
+```
+
+Then open http://localhost:3000 in your browser. To create an optimised production build and serve it:
+
+```bash
+docker run --rm -v "$PWD":/app -v l2fh_node_modules:/app/node_modules -w /app node:24-bookworm-slim npm run build
+```
+
+```bash
+docker run --rm -it -p 3000:3000 -v "$PWD":/app -v l2fh_node_modules:/app/node_modules -w /app node:24-bookworm-slim npm start
 ```
 
 ## Quick tutorial
