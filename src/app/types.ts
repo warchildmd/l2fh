@@ -72,6 +72,8 @@ type Monster = {
   ground_high: string;
 
   acquire_exp_rate: number;
+  // M.Def as shown on the wiki. C1 and C2 have this instead of base_magic_defend.
+  mdef?: number;
   skills: MonsterSkill[];
   locations: Location[];
   items: ItemDrop[];

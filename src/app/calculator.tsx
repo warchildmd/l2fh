@@ -15,14 +15,31 @@ import {
   getMonsterHpRate,
   getMonsterHpRateValue,
 } from '@/lib/formulas';
+import {
+  CHRONICLE_IDS,
+  CHRONICLES,
+  DEFAULT_CHRONICLE,
+  chooseChronicle,
+  useChronicleId,
+} from '@/lib/chronicles';
+import type {Chronicle, ChronicleId, Element} from '@/lib/chronicles';
 
 const ADENA_ITEM_ID = 57;
-const WIKI_BASE_URL = 'https://lineage2wiki.org/c5/monster';
 
-function WikiLink({id}: {id: number}) {
+const ELEMENT_LABELS: Record<Element, string> = {
+  none: 'None',
+  fire: 'Fire',
+  water: 'Water',
+  wind: 'Wind',
+  earth: 'Earth',
+  holy: 'Holy',
+  dark: 'Dark',
+};
+
+function WikiLink({base, id}: {base: string; id: number}) {
   return (
     <a
-      href={`${WIKI_BASE_URL}/${id}`}
+      href={`${base}/${id}`}
       target="_blank"
       rel="noreferrer"
       className="text-indigo-500 text-xs font-medium"
@@ -118,6 +135,7 @@ type RawMonster = {
   ground_low?: string;
   ground_high?: string;
   acquire_exp_rate?: string | number;
+  mdef?: string | number;
   locations?: Array<string | number>;
   items?: RawDrop[];
   skills?: RawMonsterSkill[];
@@ -156,33 +174,14 @@ function mDefSkillMultiplier(skills: MonsterSkill[]): number {
   return 1 + multipliers[idx];
 }
 
-function elementMultiplierFor(element: string, skills: MonsterSkill[]): number {
-  if (element === 'none') return 1;
-  const map: Record<string, number> = {
-    holy: 4275,
-    fire: 4279,
-    water: 4280,
-    wind: 4281,
-    earth: 4282,
-    dark: 4336,
-  };
-  const target = map[element];
-  if (!target) return 1;
-  return skills.some((s) => s.skill_id === target) ? 1.11 : 1;
+function elementMultiplierFor(chronicle: Chronicle, element: Element, skills: MonsterSkill[]): number {
+  const targets = chronicle.weaknessSkills[element] ?? [];
+  return skills.some((s) => targets.includes(s.skill_id)) ? 1.11 : 1;
 }
 
-function elementResistFor(element: string, skills: MonsterSkill[]): number {
-  if (element === 'none') return 1;
-  const map: Record<string, number> = {
-    fire: 4009,
-    water: 4010,
-    wind: 4011,
-    earth: 4012,
-    dark: 4333,
-  };
-  const target = map[element];
-  if (!target) return 1;
-  return skills.some((s) => s.skill_id === target) ? 0.9 : 1;
+function elementResistFor(chronicle: Chronicle, element: Element, skills: MonsterSkill[]): number {
+  const targets = chronicle.resistSkills[element] ?? [];
+  return skills.some((s) => targets.includes(s.skill_id)) ? 0.9 : 1;
 }
 
 function useDebounced<T>(value: T, delay = 200): T {
@@ -195,6 +194,9 @@ function useDebounced<T>(value: T, delay = 200): T {
 }
 
 export default function Calculator() {
+  const chronicleId = useChronicleId();
+  const chronicle = CHRONICLES[chronicleId ?? DEFAULT_CHRONICLE];
+
   const [loadLabel, setLoadLabel] = useState('');
   const [loadPct, setLoadPct] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -211,11 +213,14 @@ export default function Calculator() {
   const [matk, setMatk] = useState<number>(140);
   const [skillPower, setSkillPower] = useState<number>(26);
   const [shot, setShot] = useState<'none' | 'ss' | 'bss'>('none');
-  const [element, setElement] = useState<string>('none');
+  const [element, setElement] = useState<Element>('none');
   const [damageMultiplier, setDamageMultiplier] = useState<number>(100);
   const [ssPrice, setSsPrice] = useState<number>(24);
   const [bssPrice, setBssPrice] = useState<number>(52);
   const [remainingMonsterHp, setRemainingMonsterHp] = useState<number>(0);
+  const [expRate, setExpRate] = useState<number>(1);
+  const [spRate, setSpRate] = useState<number>(1);
+  const [adenaRate, setAdenaRate] = useState<number>(1);
 
   // Selection
   const [query, setQuery] = useState('');
@@ -238,6 +243,8 @@ export default function Calculator() {
   const [totalMonsters, setTotalMonsters] = useState<number>(100);
 
   useEffect(() => {
+    if (!chronicleId) return;
+    const {dataPath} = CHRONICLES[chronicleId];
     let cancelled = false;
 
     async function fetchWithProgress(url: string, onStage: (s: string) => void, base: number, span: number): Promise<unknown> {
@@ -281,10 +288,10 @@ export default function Calculator() {
         setLoadPct(2);
         setLoadLabel('Initializing...');
         const [monstersData, itemsData, locationsData, skillsData] = await Promise.all([
-          fetchWithProgress('/c5/monsters_data.json', (s) => setLoadLabel(s), 2, 24),
-          fetchWithProgress('/c5/items_data.json', (s) => setLoadLabel(s), 28, 22),
-          fetchWithProgress('/c5/locations_data.json', (s) => setLoadLabel(s), 52, 22),
-          fetchWithProgress('/c5/skills_data.json', (s) => setLoadLabel(s), 76, 20),
+          fetchWithProgress(`${dataPath}/monsters_data.json`, (s) => setLoadLabel(s), 2, 24),
+          fetchWithProgress(`${dataPath}/items_data.json`, (s) => setLoadLabel(s), 28, 22),
+          fetchWithProgress(`${dataPath}/locations_data.json`, (s) => setLoadLabel(s), 52, 22),
+          fetchWithProgress(`${dataPath}/skills_data.json`, (s) => setLoadLabel(s), 76, 20),
         ]);
         if (cancelled) return;
 
@@ -342,6 +349,7 @@ export default function Calculator() {
           ground_low: String(monster.ground_low ?? ''),
           ground_high: String(monster.ground_high ?? ''),
           acquire_exp_rate: toNum(monster.acquire_exp_rate),
+          mdef: monster.mdef == null ? undefined : toNum(monster.mdef),
           skills: (monster.skills ?? []).map((skill) => ({
             skill_id: toNum(skill?.skill_id),
             level: toNum(skill?.level, 1),
@@ -383,7 +391,29 @@ export default function Calculator() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [chronicleId]);
+
+  const handleChronicleChange = useCallback(
+    (next: ChronicleId) => {
+      // IDs and data differ per chronicle, so nothing selected carries over.
+      // Clearing the data also brings back the loading card.
+      setMonsters([]);
+      setMonstersById({});
+      setItems([]);
+      setItemsById({});
+      setLocations([]);
+      setSkills([]);
+      setSelectedNpc(null);
+      setSelectedLocation(null);
+      setQuery('');
+      setActive([]);
+      setLoadPct(0);
+      setLoadLabel('');
+      if (!CHRONICLES[next].elements.includes(element)) setElement('none');
+      chooseChronicle(next);
+    },
+    [element],
+  );
 
   const eligibleMonsters = useMemo(
     () => monsters.filter((mon) => !undeadOnly || mon.race?.toLowerCase() === 'undead'),
@@ -412,11 +442,12 @@ export default function Calculator() {
     (monster: Monster): ResolvedDrop[] => {
       return (monster.items || []).map((drop) => {
         const item = itemsById[drop.item_id];
+        const quantityRate = drop.item_id === ADENA_ITEM_ID ? adenaRate : 1;
         return {
           itemId: drop.item_id,
           name: item?.name ?? `#${drop.item_id}`,
-          min: drop.min,
-          max: drop.max,
+          min: drop.min * quantityRate,
+          max: drop.max * quantityRate,
           chance: drop.chance,
           spoil: drop.spoil,
           itemType: item?.item_type,
@@ -424,7 +455,7 @@ export default function Calculator() {
         };
       });
     },
-    [itemsById],
+    [itemsById, adenaRate],
   );
 
   const isHerbItem = useCallback(
@@ -449,20 +480,17 @@ export default function Calculator() {
       const skillsList = monster.skills || [];
       const hpRateSkill = getMonsterHpRate(monster);
       const hpMultiplier = hpRateSkill ? Math.max(0, getMonsterHpRateValue(hpRateSkill)) : 1;
-      const dmgMultiplier = elementMultiplierFor(element, skillsList) * elementResistFor(element, skillsList);
+      const dmgMultiplier = elementMultiplierFor(chronicle, element, skillsList) * elementResistFor(chronicle, element, skillsList);
       const damageMultiplierFactor = clamp(damageMultiplier, 20, 180) / 100;
 
-      const exp = getMonsterExp(monster);
+      const exp = Math.round(getMonsterExp(monster) * expRate);
       const hp = Math.round(monster.org_hp * (hpMultiplier || 1));
-      const baseMdef = calcMdef(monster);
+      const baseMdef = monster.mdef ?? calcMdef(monster);
       const mdef = Math.round(baseMdef * mDefSkillMultiplier(skillsList));
       const dmg =
         dmgMultiplier *
         damageMultiplierFactor *
-        92 *
-        Math.sqrt(Math.max(0, matk) * shotMultiplier(shot)) *
-        Math.max(0, skillPower) /
-        (Math.max(1, mdef));
+        chronicle.magicDamage({matk, shotMultiplier: shotMultiplier(shot), skillPower, mdef});
       const effectiveHp = Math.max(0, hp - Math.min(hp, remainingMonsterHp));
       const hits = dmg > 0 && hp > 0 ? Math.max(1, Math.ceil(effectiveHp / dmg)) : Infinity;
       const remainingHp = hits && isFinite(hits) ? Math.max(0, hp - hits * dmg) : hp;
@@ -490,7 +518,7 @@ export default function Calculator() {
         netAdenaPerKill,
       };
     },
-    [resolveDrops, element, matk, shot, skillPower, ssPrice, bssPrice, hasHerbDrop, damageMultiplier, remainingMonsterHp],
+    [chronicle, resolveDrops, element, matk, shot, skillPower, ssPrice, bssPrice, hasHerbDrop, damageMultiplier, remainingMonsterHp, expRate],
   );
 
   const selectedDrops = useMemo(() => (selectedNpc ? resolveDrops(selectedNpc) : []), [selectedNpc, resolveDrops]);
@@ -511,7 +539,7 @@ export default function Calculator() {
       const level = monster.level;
       if (level < suggestedMinLevel || level > suggestedMaxLevel) continue;
       const result = calculate(monster);
-      if (suggestedHerbs && !result.herbs) continue;
+      if (chronicle.hasHerbs && suggestedHerbs && !result.herbs) continue;
       if (isFinite(result.hits) && result.hits > suggestedMaxHits) continue;
       results.push(result);
     }
@@ -521,7 +549,7 @@ export default function Calculator() {
       results.sort((a, b) => b.expPerHit - a.expPerHit);
     }
     return results.slice(0, 32);
-  }, [eligibleMonsters, suggestedMinLevel, suggestedMaxLevel, suggestedHerbs, suggestedMaxHits, suggestedOptimisation, calculate]);
+  }, [chronicle, eligibleMonsters, suggestedMinLevel, suggestedMaxLevel, suggestedHerbs, suggestedMaxHits, suggestedOptimisation, calculate]);
 
   const locationAggregates = useMemo(() => {
     const groups: Record<number, LocationAggregate> = {};
@@ -684,9 +712,31 @@ export default function Calculator() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-white to-neutral-100 dark:from-black dark:to-neutral-950 text-neutral-900 dark:text-neutral-100">
       <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
-        <header className="flex items-center justify-between">
-          <h1 className="text-2xl font-semibold tracking-tight">L2Reborn Mage Farm Helper (C5)</h1>
-          <div className="text-xs text-neutral-500">created by <b>God</b> (L2Reborn Signature Franz) • shadcn/ui • Next.js</div>
+        <header className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight">L2Reborn Mage Farm Helper</h1>
+            <div className="text-xs text-neutral-500">created by <b>Thanos</b> (L2Reborn Legacy) • shadcn/ui • Next.js</div>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Select value={chronicle.id} onValueChange={(value: ChronicleId) => handleChronicleChange(value)}>
+              <SelectTrigger className="w-56" aria-label="Chronicle">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CHRONICLE_IDS.map((id) => (
+                  <SelectItem key={id} value={id}>{CHRONICLES[id].label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Tabs value="magical">
+              <TabsList aria-label="Class type">
+                <TabsTrigger value="magical">Magical</TabsTrigger>
+                <span title="Coming soon">
+                  <TabsTrigger value="physical" disabled>Physical</TabsTrigger>
+                </span>
+              </TabsList>
+            </Tabs>
+          </div>
         </header>
 
         {!monsters.length || !items.length || !locations.length || !skills.length ? (
@@ -716,6 +766,11 @@ export default function Calculator() {
             <Card>
               <CardHeader>
                 <div className="text-sm font-semibold">Farming inputs</div>
+                {!chronicle.damageVerified && (
+                  <div className="text-xs text-amber-700 dark:text-amber-400">
+                    Damage for {chronicle.label} uses the C5 formula and hasn&apos;t been checked in-game yet.
+                  </div>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -742,18 +797,14 @@ export default function Calculator() {
                   </div>
                   <div className="flex flex-col gap-2">
                     <Label>Element</Label>
-                    <Select value={element} onValueChange={(value: string) => setElement(value)}>
+                    <Select value={element} onValueChange={(value: Element) => setElement(value)}>
                       <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select element" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="none">None</SelectItem>
-                        <SelectItem value="fire">Fire</SelectItem>
-                        <SelectItem value="water">Water</SelectItem>
-                        <SelectItem value="wind">Wind</SelectItem>
-                        <SelectItem value="earth">Earth</SelectItem>
-                        <SelectItem value="holy">Holy</SelectItem>
-                        <SelectItem value="dark">Dark</SelectItem>
+                        {chronicle.elements.map((value) => (
+                          <SelectItem key={value} value={value}>{ELEMENT_LABELS[value]}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -790,6 +841,19 @@ export default function Calculator() {
                     />
                     <div className="text-xs text-neutral-500">Allowed HP left after hits.</div>
                   </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="expRate">EXP rate</Label>
+                    <Input id="expRate" type="number" min={0} value={expRate} onChange={(e) => setExpRate(Math.max(0, toNum(e.target.value, 0)))} />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="spRate">SP rate</Label>
+                    <Input id="spRate" type="number" min={0} value={spRate} onChange={(e) => setSpRate(Math.max(0, toNum(e.target.value, 0)))} />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <Label htmlFor="adenaRate">Adena rate</Label>
+                    <Input id="adenaRate" type="number" min={0} value={adenaRate} onChange={(e) => setAdenaRate(Math.max(0, toNum(e.target.value, 0)))} />
+                    <div className="text-xs text-neutral-500">Server rates. Data is stored at x1.</div>
+                  </div>
                 </div>
                 <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="flex flex-col gap-2">
@@ -817,8 +881,15 @@ export default function Calculator() {
                     <Input id="maxLevel" type="number" value={suggestedMaxLevel} onChange={(e) => setSuggestedMaxLevel(toNum(e.target.value, 80))} />
                   </div>
                   <div className="flex items-center gap-2 md:col-span-2">
-                    <Checkbox id="herbs" checked={suggestedHerbs} onCheckedChange={(checked) => setSuggestedHerbs(checked === true)} />
-                    <Label htmlFor="herbs" className="text-sm">Only show herb drop monsters</Label>
+                    <Checkbox
+                      id="herbs"
+                      disabled={!chronicle.hasHerbs}
+                      checked={chronicle.hasHerbs && suggestedHerbs}
+                      onCheckedChange={(checked) => setSuggestedHerbs(checked === true)}
+                    />
+                    <Label htmlFor="herbs" className="text-sm">
+                      Only show herb drop monsters{!chronicle.hasHerbs && ' (no herbs in this chronicle)'}
+                    </Label>
                   </div>
                   <div className="flex items-center gap-2 md:col-span-2">
                     <Checkbox id="undeadOnly" checked={undeadOnly} onCheckedChange={(checked) => setUndeadOnly(checked === true)} />
@@ -946,7 +1017,7 @@ export default function Calculator() {
                                     <div>
                                       <div className="text-sm font-semibold flex items-center gap-2">
                                         {entry.monster.name}
-                                        <WikiLink id={entry.monster.npc_id} />
+                                        <WikiLink base={chronicle.wikiBaseUrl} id={entry.monster.npc_id} />
                                       </div>
                                       <div className="text-xs text-neutral-500">
                                         Level {entry.monster.level || '-'} • ID {entry.monster.npc_id}
@@ -1032,7 +1103,7 @@ export default function Calculator() {
                             <div className="text-lg font-medium flex items-center gap-3">
                               {selectedNpc.name}
                               <small>
-                                <WikiLink id={selectedNpc.npc_id} />
+                                <WikiLink base={chronicle.wikiBaseUrl} id={selectedNpc.npc_id} />
                               </small>
                             </div>
                             <div className="text-xs text-neutral-500">
@@ -1071,7 +1142,7 @@ export default function Calculator() {
                             </div>
                             <div className="rounded-md bg-neutral-50 dark:bg-neutral-800/50 p-3">
                               <div className="text-xs text-neutral-500">SP</div>
-                              <div className="font-medium">{selectedNpc.acquire_sp.toLocaleString()}</div>
+                              <div className="font-medium">{Math.round(selectedNpc.acquire_sp * spRate).toLocaleString()}</div>
                             </div>
                           </div>
                           <div className="text-xs text-neutral-500">
@@ -1130,7 +1201,7 @@ export default function Calculator() {
                               <div>
                                 <div className="text-sm font-semibold flex items-center gap-2">
                                   {entry.monster.name}
-                                  <WikiLink id={entry.monster.npc_id} />
+                                  <WikiLink base={chronicle.wikiBaseUrl} id={entry.monster.npc_id} />
                                 </div>
                                 <div className="text-xs text-neutral-500">Level {entry.monster.level || '-'} • Hits {isFinite(entry.hits) ? entry.hits : '∞'}</div>
                               </div>
@@ -1222,7 +1293,7 @@ export default function Calculator() {
                                     {bestMonster ? (
                                       <>
                                         {bestMonster.monster.name}
-                                        <WikiLink id={bestMonster.monster.npc_id} />
+                                        <WikiLink base={chronicle.wikiBaseUrl} id={bestMonster.monster.npc_id} />
                                       </>
                                     ) : (
                                       '–'
@@ -1240,7 +1311,7 @@ export default function Calculator() {
                                   <div>
                                     <div className="font-medium flex items-center gap-2">
                                       {entry.monster.name}
-                                      <WikiLink id={entry.monster.npc_id} />
+                                      <WikiLink base={chronicle.wikiBaseUrl} id={entry.monster.npc_id} />
                                     </div>
                                     <div className="text-xs text-neutral-500">Lv {entry.monster.level} • Net {entry.netAdenaPerKill.toFixed(1)}</div>
                                   </div>
@@ -1294,7 +1365,7 @@ export default function Calculator() {
                                     <div className="flex-1 min-w-0">
                                       <div className="truncate font-medium flex items-center gap-2" title={entry.name}>
                                         <span className="truncate">{entry.name}</span>
-                                        <WikiLink id={entry.id} />
+                                        <WikiLink base={chronicle.wikiBaseUrl} id={entry.id} />
                                       </div>
                                       {details ? (
                                         <div className="text-xs text-neutral-500 truncate">
