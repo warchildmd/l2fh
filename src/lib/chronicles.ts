@@ -35,8 +35,8 @@ const EARLY_CHRONICLE = {
   hasHerbs: false,
   elements: ['none', 'fire', 'water', 'wind', 'earth'] as Element[],
   // 4013: resists Fire, weak to Water. 4014: resists Water, weak to Fire.
-  // 4015: resists Wind, weak to Earth. 4102: weak to Fire.
-  weaknessSkills: {water: [4013], fire: [4014, 4102], earth: [4015]},
+  // 4015: resists Wind, weak to Earth.
+  weaknessSkills: {water: [4013], fire: [4014], earth: [4015]},
   resistSkills: {fire: [4013], water: [4014], wind: [4015]},
   magicDamage: c5MagicDamage,
   damageVerified: false,
