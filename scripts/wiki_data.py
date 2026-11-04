@@ -48,6 +48,10 @@ C2_SWEEP = [range(1, 1000), range(5000, 6000), range(12000, 12401)]
 C2_EXP_RATE = 40
 C2_SP_RATE = 80
 C2_ADENA_RATE = 250
+# Item chances are only this clean on rare items, common ones are compressed. C2
+# rows with a C1 counterpart use C1's chance instead, see x1_chance().
+C2_DROP_RATE = 20
+C2_SPOIL_RATE = 30
 
 # C2-only entries that aren't scaled, like the raid bosses that have a C1 page.
 # They have no C1 counterpart to compare with and the wiki types them as warrior,
@@ -180,6 +184,12 @@ def stat(body, label):
     return strip_tags(match.group(1)) if match else None
 
 
+def base_stat(body, label):
+    """Value of a base stat cell: <div ...>DEX</div><div ...>30</div>."""
+    match = re.search(label + r'\s*</div>\s*<div[^>]*>\s*(\d+)', body)
+    return to_number(match.group(1)) if match else None
+
+
 def parse_quantity(text):
     parts = [to_number(p) for p in text.split(' - ')]
     if None in parts or not parts:
@@ -255,9 +265,10 @@ def parse_page(text, chronicle):
         'exp': to_number(stat(body, 'Exp:')),
         'sp': to_number(stat(body, 'Sp:')),
         'mdef': to_number(stat(body, 'M.Def.:')),
+        'pdef': to_number(stat(body, 'P.Def.:')),
         'race': (stat(body, 'Race:') or '').lower(),
-        'men': to_number(re.search(r'MEN\s*</div>\s*<div[^>]*>\s*(\d+)', body).group(1))
-        if re.search(r'MEN\s*</div>\s*<div[^>]*>\s*(\d+)', body) else None,
+        'men': base_stat(body, 'MEN'),
+        'dex': base_stat(body, 'DEX'),
         'locations': locations,
         'skills': skills,
         'drops': parse_tabs(body, chronicle),
@@ -357,17 +368,34 @@ def normalize_c2(c2, c1, pairs):
     """Attach x1 values to every C2 entry.
 
     C2 mobs with a C1 counterpart use the ratio to it (EXP x40 or x1, and so on).
-    C2-only mobs use the common rate. Item chances stay as they are: they differ
-    from C1 by no single factor, so there's nothing to divide by.
+    C2-only mobs use the common rate. Chances are handled per row by x1_chance().
     """
     for page_id, entry in c2.items():
-        if page_id in C2_UNSCALED_IDS:
-            entry.update(exp_divisor=1, sp_divisor=1, adena_divisor=1)
-            continue
         other = c1.get(pairs.get(page_id))
+        entry['c1_chances'] = {(d['item_id'], d['spoil']): d['chance'] for d in other['page']['drops']} if other else {}
+        if page_id in C2_UNSCALED_IDS:
+            entry.update(exp_divisor=1, sp_divisor=1, adena_divisor=1, chance_unscaled=True)
+            continue
         entry['exp_divisor'] = rate_for(exp_rate(entry), exp_rate(other) if other else 0, C2_EXP_RATE)
         entry['sp_divisor'] = rate_for(sp_value(entry), sp_value(other) if other else 0, C2_SP_RATE)
         entry['adena_divisor'] = rate_for(adena_max(entry), adena_max(other) if other else 0, C2_ADENA_RATE)
+
+
+def x1_chance(drop, entry):
+    """A drop's chance with C2's rates removed. Other chronicles pass through.
+
+    C1 and C2 stats match exactly, so C1's chance is the best x1 value. Rows with
+    no C1 counterpart are estimates. Adena's chance was never scaled, only its
+    quantity. The wiki's C2 data has chances above 100%, hence the cap.
+    """
+    if 'c1_chances' not in entry:
+        return drop['chance']
+    reference = entry['c1_chances'].get((drop['item_id'], drop['spoil']))
+    if reference is not None:
+        return reference
+    if drop['item_id'] == ADENA_ID or entry.get('chance_unscaled'):
+        return min(drop['chance'], 100)
+    return min(drop['chance'] / (C2_SPOIL_RATE if drop['spoil'] else C2_DROP_RATE), 100)
 
 
 def item_kind(row, known_items):
@@ -416,7 +444,7 @@ def write_chronicle(chronicle, entries, skill_names, known_items):
                 'item_id': drop['item_id'],
                 'min': round(drop['min'] / divisor),
                 'max': round(drop['max'] / divisor),
-                'chance': drop['chance'],
+                'chance': round(x1_chance(drop, entry), 4),
                 'spoil': drop['spoil'],
             })
 
@@ -437,7 +465,9 @@ def write_chronicle(chronicle, entries, skill_names, known_items):
             'org_hp': page['hp'],
             'org_mp': page['mp'],
             'men': page['men'],
+            'dex': page['dex'],
             'mdef': page['mdef'],
+            'pdef': page['pdef'],
             'acquire_exp_rate': round(exp_rate(entry) / exp_divisor, 4),
             'acquire_sp': round(sp_value(entry) / entry.get('sp_divisor', 1), 4),
             'locations': sorted(page['locations']),
@@ -505,17 +535,31 @@ def cmd_check():
               f'unlisted mobs {sum(1 for v in mobs.values() if not v["row"])}, '
               f'herb rows {sum(1 for v in mobs.values() for d in v["page"]["drops"] if d["tab"] == "herbs")}, '
               f'without M.Def {sum(1 for v in mobs.values() if v["page"]["mdef"] is None)}, '
+              f'without P.Def {sum(1 for v in mobs.values() if v["page"]["pdef"] is None)}, '
+              f'without DEX {sum(1 for v in mobs.values() if v["page"]["dex"] is None)}, '
               f'without name {sum(1 for v in mobs.values() if not v["page"]["name"])}')
     only_c2 = [(k, v['page']['name'], v['page']['level']) for k, v in c2.items() if k not in pairs and is_mob(v)]
     print('C2 mobs with no C1 page:', len(only_c2), only_c2[:30])
+
+    for chronicle in ('c1', 'c2'):
+        with open(os.path.join(PUBLIC, chronicle, 'monsters_data.json'), encoding='utf-8') as f:
+            built = json.load(f)
+        over = [(m['npc_id'], i['item_id'], i['chance']) for m in built.values() for i in m['items'] if i['chance'] > 100]
+        print(f'{chronicle}: built drop chances above 100%: {len(over)}', over[:10])
+        failures += len(over)
     if failures:
-        raise SystemExit(f'{failures} unexpected ratios. Review before shipping.')
+        raise SystemExit(f'{failures} unexpected values. Review before shipping.')
 
 
 def calc_mdef(level, men, base_magic_defend):
     """calcMdef from src/lib/formulas.tsx, to prove the page's M.Def is the same value."""
     men_bonus = int(1.01 ** (men + 0.06) * 100 + 0.5) / 100
     return men_bonus * (89 + level) / 100 * base_magic_defend
+
+
+def calc_pdef(level, base_defend):
+    """calcPdef from src/lib/formulas.tsx, to prove the page's P.Def is the same value."""
+    return (89 + level) / 100 * base_defend
 
 
 def cmd_verify_c5(count):
@@ -556,6 +600,11 @@ def cmd_verify_c5(count):
             problems.append((monster_id, 'stats', record['level'], record['org_hp'], page['level'], page['hp']))
         if float(record['men']) != page['men']:
             problems.append((monster_id, 'men', record['men'], page['men']))
+        if float(record['dex']) != page['dex']:
+            problems.append((monster_id, 'dex', record['dex'], page['dex']))
+        expected_pdef = calc_pdef(int(record['level']), float(record['base_defend']))
+        if abs(expected_pdef - page['pdef']) > 1:
+            problems.append((monster_id, 'pdef', expected_pdef, page['pdef']))
     print(f'verified {len(sample)} monsters, {checked_rows} drop rows, {len(problems)} problems')
     for problem in problems[:30]:
         print('  ', problem)
