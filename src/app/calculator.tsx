@@ -854,7 +854,7 @@ export default function Calculator() {
         <header className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h1 className="text-2xl font-semibold tracking-tight">L2Reborn Farm Helper</h1>
-            <div className="text-xs text-neutral-500">created by <b>Thanos</b> (L2Reborn Legacy) • shadcn/ui • Next.js</div>
+            <div className="text-xs text-neutral-500">created by <b>Warchild</b> (L2Reborn Legacy) • shadcn/ui • Next.js</div>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <Select value={chronicle.id} onValueChange={(value: ChronicleId) => handleChronicleChange(value)}>
